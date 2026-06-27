@@ -1,0 +1,6 @@
+{
+  "name": "بيزنس ديفلوبرز",
+  "description": "موقع شركة بيزنس ديفلوبرز لخدمات إدارة الأعمال، التخطيط، التحكيم التقني، ريادة الأعمال، وتصميم وتطوير التطبيقات والحلول الرقمية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

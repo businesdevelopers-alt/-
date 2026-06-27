@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@300;400;500;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", "Tajawal", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #0a1128;
+  color: #f8fafc;
+  overflow-x: hidden;
+  direction: rtl;
+}
+
+/* Premium luxury ambient glows - Disabled as per request of solid dark blue theme */
+.luxury-glow-blue, .luxury-glow-sky {
+  display: none !important;
+}
+
+.glass-card-luxe {
+  background: #0f1b3d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-luxe:hover {
+  border: 1px solid #2563eb;
+  box-shadow: 0 15px 30px -10px rgba(37, 99, 235, 0.2);
+}
+
+/* Custom scrollbar matching dark blue theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #070d1e;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+  border: 2px solid #070d1e;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float-slow {
+  animation: float 6s ease-in-out infinite;
+}
+
