@@ -133,6 +133,59 @@ ${logsText}
   }
 });
 
+// API route for summarizing Google Docs via Gemini 3.5 Flash
+app.post("/api/summarize-doc", async (req, res) => {
+  try {
+    const { docTitle, docText } = req.body;
+
+    if (!docText) {
+      return res.status(400).json({ error: "Document text is required" });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ 
+        error: "مفتاح API الخاص بـ Gemini غير مهيأ بعد. يرجى إضافته في الإعدادات." 
+      });
+    }
+
+    const prompt = `
+أنت خبير إداري ومستشار استراتيجي لشركة "بيزنس ديفلوبرز" لاستشارات ريادة الأعمال وحلول التحول الرقمي.
+لقد قام العميل بتحميل مستند من مستندات جوجل (Google Docs) بعنوان: "${docTitle || "مستند بدون عنوان"}".
+مهمتك هي قراءة نص هذا المستند بتمعن وتحليله تحليلاً استراتيجياً وتقديم تقرير تلخيصي احترافي، مبهج، ومنظم بشكل ممتاز باللغة العربية.
+
+فيما يلي نص المستند الكامل المراد تحليله وتلخيصه:
+"""
+${docText}
+"""
+
+يرجى هيكلة التلخيص الإداري في الأقسام التالية مع استخدام علامات التنسيق Markdown بشكل جميل:
+1. **الخلاصة والبيان التنفيذي**: (فقرة ملخصة بليغة تبين الفكرة العامة للمستند وأهمية محتواه)
+2. **النقاط والبنود الرئيسية**: (قائمة نقطية جذابة توضح أهم الأفكار، الشروط، المعايير أو الالتزامات الواردة)
+3. **التوصيات والخطوات الاستشارية القادمة**: (3-4 نقاط ملموسة وعملية تنصح العميل باتخاذها كخطوة تالية بناءً على هذا المستند من منظور إداري وتقني)
+
+حافظ على لغة راقية، دافئة، واحترافية تماماً تليق بشركة "بيزنس ديفلوبرز".
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        temperature: 0.3, // Lower temperature for more consistent, analytical summaries
+      }
+    });
+
+    const summary = response.text || "عذراً، لم أستطع توليد تلخيص لهذا المستند في الوقت الحالي.";
+    res.json({ summary });
+
+  } catch (error: any) {
+    console.error("Gemini Doc Summarizer Error:", error);
+    res.status(500).json({ 
+      error: "حدث خطأ أثناء معالجة وتلخيص المستند بواسطة الذكاء الاصطناعي.",
+      details: error.message 
+    });
+  }
+});
+
 // Vite middleware setup or Static serving
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

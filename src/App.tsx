@@ -16,6 +16,7 @@ import FAQ from "./components/FAQ";
 import Resources from "./components/Resources";
 import SolutionComparison from "./components/SolutionComparison";
 import Careers from "./components/Careers";
+import CompanyStructureBuilder from "./components/CompanyStructureBuilder";
 
 export default function App() {
   const [activeSection, setActiveSection] = useState("hero");
@@ -26,7 +27,7 @@ export default function App() {
   // Monitor active section on scroll
   useEffect(() => {
     const handleScroll = () => {
-      const sections = ["hero", "services", "solutions", "portfolio", "calculator", "dashboard", "faq", "resources", "careers", "contact"];
+      const sections = ["hero", "services", "solutions", "structure-builder", "portfolio", "calculator", "dashboard", "faq", "resources", "careers", "contact"];
       const scrollPosition = window.scrollY + 160;
 
       for (const section of sections) {
@@ -200,6 +201,9 @@ export default function App() {
 
         {/* Dynamic Business Maturity Assessment Tool */}
         <MaturityAssessment onPreFillInquiry={handlePreFillInquiry} />
+
+        {/* 5.6. Interactive Corporate Structure Builder */}
+        <CompanyStructureBuilder />
 
         {/* 6. Case Studies / Previous Work (سابقة أعمالنا) */}
         <Portfolio />

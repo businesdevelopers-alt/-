@@ -22,6 +22,7 @@ export default function Header({ onNavigate, activeSection }: HeaderProps) {
     { id: "hero", label: "الرئيسية" },
     { id: "services", label: "خدماتنا" },
     { id: "solutions", label: "الحلول الذكية" },
+    { id: "structure-builder", label: "هيكلة الشركات" },
     { id: "portfolio", label: "سابقة أعمالنا" },
     { id: "calculator", label: "الحاسبة التفاعلية" },
     { id: "dashboard", label: "بوابة المشاريع" },
