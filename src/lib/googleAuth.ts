@@ -254,3 +254,93 @@ export const deleteGoogleFile = async (token: string, fileId: string): Promise<b
 
   return true;
 };
+
+// 6. List Google Sheets from user's Drive
+export const listGoogleSheets = async (token: string): Promise<GoogleDriveFile[]> => {
+  const query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
+  const fields = "files(id,name,mimeType,createdTime,modifiedTime,webViewLink,iconLink)";
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}&orderBy=modifiedTime%20desc&pageSize=30`;
+
+  const response = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `فشل جلب ملفات جداول جوجل من حسابك (Code: ${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.files || [];
+};
+
+// 7. Create a new Google Spreadsheet
+export const createGoogleSheet = async (token: string, title: string): Promise<string> => {
+  const url = "https://sheets.googleapis.com/v4/spreadsheets";
+  
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      properties: {
+        title: title
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `فشل إنشاء جدول جوجل جديد (Code: ${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.spreadsheetId;
+};
+
+// 8. Get spreadsheet values
+export const getGoogleSheetValues = async (token: string, spreadsheetId: string, range: string): Promise<any[][]> => {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+  
+  const response = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `فشل جلب بيانات جدول جوجل (Code: ${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.values || [];
+};
+
+// 9. Update spreadsheet values (or append rows)
+export const updateGoogleSheetValues = async (token: string, spreadsheetId: string, range: string, values: any[][]): Promise<boolean> => {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      values: values
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `فشل تحديث بيانات جدول جوجل (Code: ${response.status})`);
+  }
+
+  return true;
+};

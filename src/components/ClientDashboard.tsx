@@ -11,7 +11,11 @@ import {
   appendGoogleDoc,
   deleteGoogleFile,
   GoogleDriveFile,
-  GoogleDocDetails
+  GoogleDocDetails,
+  listGoogleSheets,
+  createGoogleSheet,
+  getGoogleSheetValues,
+  updateGoogleSheetValues
 } from "../lib/googleAuth";
 import { 
   LayoutDashboard, 
@@ -55,7 +59,9 @@ import {
   Search,
   Filter,
   Cloud,
-  FolderOpen
+  FolderOpen,
+  FileSpreadsheet,
+  Table
 } from "lucide-react";
 import { 
   AreaChart, 
@@ -571,6 +577,15 @@ export default function ClientDashboard() {
   const [isAppendingToDoc, setIsAppendingToDoc] = useState<boolean>(false);
   const [docConfirmDeleteId, setDocConfirmDeleteId] = useState<string | null>(null);
 
+  // Google Sheets Integration States
+  const [googleSheets, setGoogleSheets] = useState<GoogleDriveFile[]>([]);
+  const [isFetchingGoogleSheets, setIsFetchingGoogleSheets] = useState<boolean>(false);
+  const [activeGoogleSheet, setActiveGoogleSheet] = useState<GoogleDriveFile | null>(null);
+  const [isCreatingGoogleSheet, setIsCreatingGoogleSheet] = useState<boolean>(false);
+  const [selectedSheetTemplate, setSelectedSheetTemplate] = useState<string>("budget");
+  const [editorMode, setEditorMode] = useState<"docs" | "sheets">("docs");
+  const [sheetConfirmDeleteId, setSheetConfirmDeleteId] = useState<string | null>(null);
+
   // Cloud Project Editor specific states
   const [editorActiveDoc, setEditorActiveDoc] = useState<GoogleDocDetails | null>(null);
   const [isFetchingEditorDoc, setIsFetchingEditorDoc] = useState<boolean>(false);
@@ -590,13 +605,16 @@ export default function ClientDashboard() {
   const [docComments, setDocComments] = useState<DocComment[]>([]);
   const [newCommentText, setNewCommentText] = useState<string>("");
 
+  const currentActiveFileId = editorMode === "docs" ? activeGoogleDoc?.id : activeGoogleSheet?.id;
+  const currentActiveFileName = editorMode === "docs" ? activeGoogleDoc?.title : activeGoogleSheet?.name;
+  const commentStorageKey = currentActiveFileId ? `${editorMode}_comments_${currentActiveFileId}` : null;
+
   useEffect(() => {
-    if (!activeGoogleDoc) {
+    if (!currentActiveFileId) {
       setDocComments([]);
       return;
     }
-    const storageKey = `gdoc_comments_${activeGoogleDoc.id}`;
-    const saved = localStorage.getItem(storageKey);
+    const saved = localStorage.getItem(commentStorageKey!);
     if (saved) {
       try {
         setDocComments(JSON.parse(saved));
@@ -609,25 +627,26 @@ export default function ClientDashboard() {
           id: "default-1",
           author: "pm",
           authorName: "م. سارة الهاشمي (مدير المشروع)",
-          text: `مرحباً بك! لقد قمت بتوليد قالب مستند "${activeGoogleDoc.title}" لك. يرجى مراجعة البنود وإضافة أي تعديلات مطلوبة مباشرة هنا أو عبر محرر جوجل المدمج، وسأطلع عليها فوراً لمتابعة التنفيذ.`,
+          text: `مرحباً بك! لقد قمت بتوليد قالب ${editorMode === "docs" ? "مستند" : "جدول بيانات"} "${currentActiveFileName}" لك. يرجى مراجعة البنود وإضافة أي تعديلات مطلوبة مباشرة هنا أو عبر محرر جوجل المدمج، وسأطلع عليها فوراً لمتابعة التنفيذ.`,
           timestamp: "منذ ساعتين"
         },
         {
           id: "default-2",
           author: "pm",
           authorName: "م. سارة الهاشمي (مدير المشروع)",
-          text: "إذا كانت هناك بنود إضافية تحتاج إلى صياغة قانونية مخصصة، اكتبها هنا كتعليق وسأطلب من مستشارنا القانوني تحديثها لك.",
+          text: editorMode === "docs" 
+            ? "إذا كانت هناك بنود إضافية تحتاج إلى صياغة قانونية مخصصة، اكتبها هنا كتعليق وسأطلب من مستشارنا القانوني تحديثها لك."
+            : "إذا كنت بحاجة إلى تعديل الصيغ الرياضية أو إدخال ميزانية إضافية، يرجى كتابة التفاصيل هنا وسنتولى ضبطها لك.",
           timestamp: "منذ ساعة"
         }
       ];
       setDocComments(defaults);
-      localStorage.setItem(storageKey, JSON.stringify(defaults));
+      localStorage.setItem(commentStorageKey!, JSON.stringify(defaults));
     }
-  }, [activeGoogleDoc]);
+  }, [currentActiveFileId, editorMode]);
 
   const handleAddComment = () => {
-    if (!activeGoogleDoc || !newCommentText.trim()) return;
-    const storageKey = `gdoc_comments_${activeGoogleDoc.id}`;
+    if (!currentActiveFileId || !newCommentText.trim()) return;
     const newComment: DocComment = {
       id: `comment-${Date.now()}`,
       author: "client",
@@ -637,7 +656,7 @@ export default function ClientDashboard() {
     };
     const updated = [...docComments, newComment];
     setDocComments(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    localStorage.setItem(commentStorageKey!, JSON.stringify(updated));
     setNewCommentText("");
     triggerLibraryToast(
       "إضافة تعليق",
@@ -646,16 +665,15 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteComment = (commentId: string) => {
-    if (!activeGoogleDoc) return;
-    const storageKey = `gdoc_comments_${activeGoogleDoc.id}`;
+    if (!currentActiveFileId) return;
     const updated = docComments.filter(c => c.id !== commentId);
     setDocComments(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    localStorage.setItem(commentStorageKey!, JSON.stringify(updated));
   };
 
   // Automatically update sync status based on loading actions or editing actions
   useEffect(() => {
-    if (isCreatingGoogleDoc || isFetchingActiveDoc || isFetchingGoogleDocs || isAppendingToDoc) {
+    if (isCreatingGoogleDoc || isFetchingActiveDoc || isFetchingGoogleDocs || isAppendingToDoc || isCreatingGoogleSheet || isFetchingGoogleSheets) {
       setSyncStatus("saving");
     } else {
       const timer = setTimeout(() => {
@@ -663,7 +681,7 @@ export default function ClientDashboard() {
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isCreatingGoogleDoc, isFetchingActiveDoc, isFetchingGoogleDocs, isAppendingToDoc]);
+  }, [isCreatingGoogleDoc, isFetchingActiveDoc, isFetchingGoogleDocs, isAppendingToDoc, isCreatingGoogleSheet, isFetchingGoogleSheets]);
 
   // Simulate "saving" status when typing in fast append text
   useEffect(() => {
@@ -844,6 +862,7 @@ export default function ClientDashboard() {
         setGoogleUser(user);
         setGoogleToken(token);
         loadGDocs(token);
+        loadGSheets(token);
       },
       () => {
         setGoogleUser(null);
@@ -864,6 +883,23 @@ export default function ClientDashboard() {
       setGoogleDocsError(err.message || "حدث خطأ أثناء الاتصال بمستندات جوجل.");
     } finally {
       setIsFetchingGoogleDocs(false);
+    }
+  };
+
+  const loadGSheets = async (tokenToUse: string) => {
+    setIsFetchingGoogleSheets(true);
+    setGoogleDocsError("");
+    try {
+      const files = await listGoogleSheets(tokenToUse);
+      setGoogleSheets(files);
+      if (files.length > 0 && !activeGoogleSheet) {
+        setActiveGoogleSheet(files[0]);
+      }
+    } catch (err: any) {
+      console.error("Failed to load Google Sheets:", err);
+      setGoogleDocsError(err.message || "حدث خطأ أثناء الاتصال بجداول جوجل.");
+    } finally {
+      setIsFetchingGoogleSheets(false);
     }
   };
 
@@ -2168,6 +2204,7 @@ export default function ClientDashboard() {
         setGoogleUser(result.user);
         setGoogleToken(result.accessToken);
         loadGDocs(result.accessToken);
+        loadGSheets(result.accessToken);
         triggerLibraryToast(
           "اتصال سحابي ناجح",
           `تم ربط حساب جوجل بنجاح لـ ${result.user.displayName}`
@@ -2186,6 +2223,8 @@ export default function ClientDashboard() {
       setGoogleToken(null);
       setGoogleDocs([]);
       setActiveGoogleDoc(null);
+      setGoogleSheets([]);
+      setActiveGoogleSheet(null);
       triggerLibraryToast(
         "تم قطع الاتصال",
         "تم قطع الاتصال بحساب جوجل لحماية خصوصيتك السحابية."
@@ -2293,6 +2332,113 @@ export default function ClientDashboard() {
       );
     } finally {
       setIsFetchingActiveDoc(false);
+    }
+  };
+
+  const handleCreateTemplatedSheet = async (templateType: string) => {
+    if (!googleToken) return;
+    setIsCreatingGoogleSheet(true);
+    
+    let title = "";
+    let values: any[][] = [];
+    
+    if (templateType === "budget") {
+      title = "📊 بيزنس ديفلوبرز - الميزانية والتحليل المالي للمشروع";
+      values = [
+        ["بيزنس ديفلوبرز للاستشارات - ميزانية المشروع التقديرية", "", "", ""],
+        ["المرحلة / البند الفني", "الوصف والخدمة الاستشارية", "التكلفة التقديرية (ر.س)", "الحالة"],
+        ["مرحلة التخطيط والتحليل", "تحليل متطلبات العمل ووثيقة نطاق العمل التفصيلية", 15000, "مكتمل"],
+        ["التطوير البرمجي والتنفيذ", "تطوير لوحة التحكم، واجهة التطبيق والمزامنة السحابية", 45000, "قيد التنفيذ"],
+        ["الفحص ومراقبة الجودة", "اختبارات الأداء، فحص الأمان والتوافقية", 10000, "مخطط"],
+        ["التدشين والنشر والاستضافة", "نشر التطبيق على السحابة وتهيئة بيئة الإنتاج المعتمدة", 8000, "مخطط"],
+        ["الدعم الفني والتشغيل الاستشاري", "عقد صيانة ومراقبة الأداء بموجب اتفاقية SLA لعام", 12000, "مخطط"],
+        ["", "", "", ""],
+        ["إجمالي التكلفة الميزانية", "", "=SUM(C3:C7)", ""]
+      ];
+    } else if (templateType === "timeline") {
+      title = "📅 بيزنس ديفلوبرز - جدول تقدم ومراحل تسليم المشروع";
+      values = [
+        ["بيزنس ديفلوبرز للاستشارات - الجدول الزمني ومراحل التسليم للمشروع", "", "", "", ""],
+        ["اسم المرحلة", "مخرجات المرحلة", "تاريخ البدء", "تاريخ التسليم المتوقع", "نسبة الإنجاز (%)"],
+        ["1. التخطيط والنطاق", "وثيقة المواصفات الفنية ومخططات النظام وهندسة البيانات", "2026-07-01", "2026-07-15", "100%"],
+        ["2. واجهات الاستخدام (UI/UX)", "التصميم التفاعلي للوحة التحكم ومحرر المشاريع المدمج", "2026-07-16", "2026-08-05", "80%"],
+        ["3. التطوير البرمجي", "بناء الأكواد، ربط المصادقة الثنائية وقاعدة البيانات", "2026-08-06", "2026-09-15", "0%"],
+        ["4. اختبار الأمان والجودة", "شهادات الفحص ومطابقة المعايير الفنية السعودية", "2026-09-16", "2026-10-01", "0%"],
+        ["5. التدشين والإنتاج", "التكامل المالي، رفع التقارير، تسليم المستندات السحابية", "2026-10-02", "2026-10-10", "0%"]
+      ];
+    } else if (templateType === "cashflow") {
+      title = "💸 بيزنس ديفلوبرز - التدفقات النقدية المتوقعة";
+      values = [
+        ["بيزنس ديفلوبرز للاستشارات - التدفقات النقدية والتحليل المالي المتوقع للمشروع", "", "", ""],
+        ["الفترة المالية", "التدفقات النقدية الواردة (ر.س)", "التدفقات النقدية الخارجة (ر.س)", "صافي التدفقات النقدية (ر.س)"],
+        ["الشهر الأول", 50000, 25000, "=B3-C3"],
+        ["الشهر الثاني", 65000, 30000, "=B4-C4"],
+        ["الشهر الثالث", 80000, 35000, "=B5-C5"],
+        ["الشهر الرابع", 95000, 40000, "=B6-C6"],
+        ["الشهر الخامس", 110000, 45000, "=B7-C7"],
+        ["الشهر السادس", 125000, 50000, "=B8-C8"],
+        ["", "", "", ""],
+        ["إجمالي التدفقات النقدية المتوقعة", "=SUM(B3:B8)", "=SUM(C3:C8)", "=SUM(D3:D8)"]
+      ];
+    } else {
+      title = "📊 جدول مالي ومحاسبي مخصص";
+      values = [
+        ["جدول مالي مخصص", "", ""],
+        ["البند", "القيمة (ر.س)", "ملاحظات"],
+        ["مصاريف أولية", 5000, "تأسيس"],
+        ["مصاريف تشغيلية", 3000, "شاملة الاستضافة"]
+      ];
+    }
+
+    try {
+      const spreadsheetId = await createGoogleSheet(googleToken, title);
+      await updateGoogleSheetValues(googleToken, spreadsheetId, "Sheet1!A1", values);
+      await loadGSheets(googleToken);
+      
+      const newSheetFile: GoogleDriveFile = {
+        id: spreadsheetId,
+        name: title,
+        mimeType: "application/vnd.google-apps.spreadsheet",
+        createdTime: new Date().toISOString(),
+        modifiedTime: new Date().toISOString(),
+        webViewLink: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
+      };
+      setActiveGoogleSheet(newSheetFile);
+      
+      triggerLibraryToast(
+        "إنشاء جدول سحابي",
+        `تم إنشاء جدول "${title}" بنجاح وفتحه تلقائياً في محرر الجداول المالي المدمج.`
+      );
+    } catch (err: any) {
+      console.error(err);
+      triggerLibraryToast(
+        "حدث خطأ",
+        `فشل إنشاء جدول جوجل السحابي: ${err.message}`
+      );
+    } finally {
+      setIsCreatingGoogleSheet(false);
+    }
+  };
+
+  const handleDeleteSheet = async (sheetId: string) => {
+    if (!googleToken) return;
+    try {
+      await deleteGoogleFile(googleToken, sheetId);
+      if (activeGoogleSheet?.id === sheetId) {
+        setActiveGoogleSheet(null);
+      }
+      await loadGSheets(googleToken);
+      setSheetConfirmDeleteId(null);
+      triggerLibraryToast(
+        "حذف ملف",
+        "تم حذف جدول البيانات بنجاح من حسابك السحابي."
+      );
+    } catch (err: any) {
+      console.error(err);
+      triggerLibraryToast(
+        "حدث خطأ",
+        `فشل حذف جدول البيانات: ${err.message}`
+      );
     }
   };
 
@@ -2756,9 +2902,9 @@ export default function ClientDashboard() {
             </div>
             
             <div className="space-y-2">
-              <h4 className="text-xl font-black text-slate-900">محرر المشاريع السحابي التفاعلي (Google Docs Editor)</h4>
+              <h4 className="text-xl font-black text-slate-900">محرر المشاريع السحابي التفاعلي (Google Docs & Sheets)</h4>
               <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">
-                اربط حسابك في Google Workspace الآن للبدء في كتابة وتحديث ومزامنة وثائق المشروع، الجداول الزمنية المخططة، والمواصفات الفنية التفصيلية مباشرة وبشكل حي عبر الإطار المدمج.
+                اربط حسابك في Google Workspace الآن للبدء في كتابة وتحديث ومزامنة وثائق وجداول المشروع مباشرة وبشكل حي عبر الإطار المدمج.
               </p>
             </div>
 
@@ -2768,9 +2914,9 @@ export default function ClientDashboard() {
                 <Sparkles className="w-4 h-4 text-amber-500" />
               </div>
               <ul className="list-disc list-inside space-y-1" dir="rtl">
-                <li>إنشاء وتخصيص وثائق المشروع ومواصفاتها الفنية فورياً من قوالب جاهزة.</li>
-                <li>تعديل مباشر وتلقائي للجداول الزمنية من داخل لوحة التحكم عبر iframe مدمج.</li>
-                <li><strong>مساعد الذكاء الاصطناعي (Gemini 3.5)</strong> لمراجعة المواصفات ومطابقة مراحل التسليم والتنبؤ بالمخاطر الفنية.</li>
+                <li>إنشاء وتخصيص وثائق ومواصفات المشاريع فنيًا ومستندات وجداول جوجل فورياً من قوالب جاهزة.</li>
+                <li>تعديل مباشر وتلقائي للجداول المالية والزمنية من داخل لوحة التحكم عبر iframe مدمج.</li>
+                <li><strong>مساعد الذكاء الاصطناعي ومحرر الصيغ</strong> لتصميم وحساب ميزانية مشروعك والتنبؤ بالمخاطر.</li>
               </ul>
             </div>
 
@@ -2802,186 +2948,451 @@ export default function ClientDashboard() {
                   d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44A11.94 11.94 0 0012 0 12 12 0 001.32 6.59l3.92 3.1c.95-2.88 3.61-5.01 6.76-5.01z"
                 />
               </svg>
-              <span>ربط حساب Google وتفعيل محرر المشاريع</span>
+              <span>ربط حساب Google Workspace التفاعلي</span>
             </button>
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Account Info Header */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-5 flex flex-col lg:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5 text-right" dir="rtl">
-                {googleUser.photoURL ? (
-                  <img
-                    src={googleUser.photoURL}
-                    alt={googleUser.displayName}
-                    referrerPolicy="no-referrer"
-                    className="w-12 h-12 rounded-full border-2 border-blue-500 shadow-sm shrink-0"
-                  />
+            {/* Interactive IFrame Editor Pane */}
+            <div className="lg:col-span-8 space-y-6">
+              {isFetchingActiveDoc || isCreatingGoogleSheet ? (
+                  <div className="bg-white border border-slate-200 rounded-3xl p-16 shadow-md text-center space-y-4 flex flex-col items-center justify-center">
+                    <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                    <h5 className="text-sm font-bold text-slate-800">جاري تجميع روابط محرر جوجل ومزامنة الملف...</h5>
+                    <p className="text-xs text-slate-400">نحن نقوم ببناء الربط السحابي الآمن مع Google Workspace وعرضه تفاعلياً.</p>
+                  </div>
+                ) : (editorMode === "docs" && activeGoogleDoc) || (editorMode === "sheets" && activeGoogleSheet) ? (
+                  <div className="space-y-6">
+                    {/* Active Editor Layout */}
+                    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md text-right space-y-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={editorMode === "docs" ? activeGoogleDoc?.webViewLink : activeGoogleSheet?.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`text-white text-xs font-black px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors shadow-md ${
+                              editorMode === "docs" 
+                                ? "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/10" 
+                                : "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/10"
+                            }`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>تعديل بملء الشاشة في جوجل 🔗</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editorMode === "docs" && activeGoogleDoc) {
+                                setDocConfirmDeleteId(activeGoogleDoc.id);
+                              } else if (editorMode === "sheets" && activeGoogleSheet) {
+                                setSheetConfirmDeleteId(activeGoogleSheet.id);
+                              }
+                            }}
+                            className="p-2.5 text-rose-600 hover:text-white hover:bg-rose-600 border border-slate-200 hover:border-rose-600 rounded-xl transition-all cursor-pointer"
+                            title="حذف الملف نهائياً"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            {syncStatus === "synced" ? (
+                              <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-150 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                                <Cloud className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>تمت مزامنة التغييرات بنجاح</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-150 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                                <RotateCcw className="w-3 h-3 text-blue-500 animate-spin shrink-0" />
+                                <span>جاري حفظ ومزامنة التعديلات...</span>
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-semibold">بوابة المزامنة النشطة</span>
+                          </div>
+                          <h4 className="text-base font-black text-slate-900 mt-1">
+                            {editorMode === "docs" ? activeGoogleDoc?.title : activeGoogleSheet?.name}
+                          </h4>
+                        </div>
+                      </div>
+
+                      {/* Unified Template Switcher Dropdown inside Active Google Docs Header */}
+                      {editorMode === "docs" && (
+                        <div className="bg-amber-50/50 border border-amber-200/85 p-3.5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-3 text-right" dir="rtl">
+                          <div className="space-y-1">
+                            <span className="text-xs font-black text-slate-800 flex items-center gap-1">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              <span>تغيير أو إنشاء قالب جديد للمستند مباشرة:</span>
+                            </span>
+                            <p className="text-[10px] text-slate-500 leading-none">
+                              اختر قالب مستند من القائمة الجاهزة وسيتم توليده وحفظه بالكامل في حسابك وفتحه فورياً.
+                            </p>
+                          </div>
+                          <div className="flex gap-2 items-center w-full md:w-auto">
+                            <select
+                              value={selectedTemplate}
+                              onChange={(e) => setSelectedTemplate(e.target.value)}
+                              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-sans text-slate-800 focus:outline-none focus:border-indigo-500 text-right cursor-pointer min-w-[200px]"
+                            >
+                              <option value="nda">🛡️ اتفاقية سرية المعلومات (NDA)</option>
+                              <option value="bizplan">📈 نموذج خطة عمل متكاملة (Business Plan)</option>
+                              <option value="spec">📄 وثيقة مواصفات المشروع (Technical Specs)</option>
+                              <option value="timeline">📅 خطة الجدول الزمني ومراحل التسليم</option>
+                              <option value="general">💼 اتفاقية نطاق عمل المشروع (General SOW)</option>
+                              <option value="proposal">💰 قالب المقترح الفني والمالي المتكامل</option>
+                              <option value="sla">🎧 اتفاقية مستوى تقديم الخدمة الفنية (SLA)</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateTemplatedDoc(selectedTemplate)}
+                              disabled={isCreatingGoogleDoc}
+                              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {isCreatingGoogleDoc ? (
+                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <span>فتح الآن 🚀</span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Unified Template Switcher Dropdown inside Active Google Sheets Header */}
+                      {editorMode === "sheets" && (
+                        <div className="bg-emerald-50/50 border border-emerald-200/80 p-3.5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-3 text-right" dir="rtl">
+                          <div className="space-y-1">
+                            <span className="text-xs font-black text-slate-800 flex items-center gap-1">
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>إنشاء وتوليد قالب مالي جديد للجداول المعتمدة:</span>
+                            </span>
+                            <p className="text-[10px] text-slate-500 leading-none">
+                              اختر قالب مالي لحساب التكاليف وجدولة الموارد، وسيتم توليد وبناء الجدول المالي فوراً بـ Google Sheets.
+                            </p>
+                          </div>
+                          <div className="flex gap-2 items-center w-full md:w-auto">
+                            <select
+                              value={selectedSheetTemplate}
+                              onChange={(e) => setSelectedSheetTemplate(e.target.value)}
+                              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-sans text-slate-800 focus:outline-none focus:border-emerald-500 text-right cursor-pointer min-w-[200px]"
+                            >
+                              <option value="budget">📊 ميزانية المشروع والتحليل المالي (Cost Budgeting)</option>
+                              <option value="timeline">📅 جدول تقدم ومراحل تسليم المشروع (Gantt Tracker)</option>
+                              <option value="cashflow">💸 التدفقات النقدية والجدوى التوقعية (Cash Flow Forecast)</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateTemplatedSheet(selectedSheetTemplate)}
+                              disabled={isCreatingGoogleSheet}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {isCreatingGoogleSheet ? (
+                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <span>فتح الآن 🚀</span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Interactive Google Workspace iframe Editor Frame */}
+                      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
+                        {/* Editor IFrame Column */}
+                        <div className="xl:col-span-8 space-y-3 flex flex-col justify-between">
+                          <div className="space-y-2 flex-grow">
+                            <div className="flex items-center justify-between text-xs text-slate-500">
+                              <span className="font-mono text-[10px]">iframe sandbox editor</span>
+                              <span className="font-bold text-slate-700">
+                                {editorMode === "docs" ? "محرر مستندات جوجل المضمن للمشروع:" : "محرر جداول بيانات جوجل المالي المضمن:"}
+                              </span>
+                            </div>
+
+                            <div className="relative border-2 border-slate-200 rounded-2xl overflow-hidden bg-slate-50 shadow-inner flex-grow">
+                              <iframe
+                                src={
+                                  editorMode === "docs"
+                                    ? `https://docs.google.com/document/d/${activeGoogleDoc?.id}/edit?embedded=true&chrome=false`
+                                    : `https://docs.google.com/spreadsheets/d/${activeGoogleSheet?.id}/edit?embedded=true&chrome=false`
+                                }
+                                className="w-full h-[500px] border-none"
+                                title="Google Editor Workspace"
+                                allow="autoplay"
+                              />
+                              <div className="bg-slate-100 border-t border-slate-200 p-3 text-right text-[11px] text-slate-600 flex items-center justify-between">
+                                <span className="text-slate-400">تحديثات الملف تحفظ تلقائياً على خوادم جوجل السحابية الآمنة.</span>
+                                {syncStatus === "synced" ? (
+                                  <span className="font-bold text-emerald-600 flex items-center gap-1">
+                                    <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>✓ متزامن ومحفوظ تلقائياً في السحابة</span>
+                                  </span>
+                                ) : (
+                                  <span className="font-bold text-blue-600 flex items-center gap-1">
+                                    <RotateCcw className="w-3.5 h-3.5 text-blue-500 animate-spin" />
+                                    <span>جاري الحفظ والتحقق من المزامنة...</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {editorMode === "docs" ? (
+                            <div className="bg-blue-50 border border-blue-150/70 p-3.5 rounded-xl text-right text-xs text-blue-800 space-y-1 shrink-0">
+                              <div className="font-black flex items-center gap-1 justify-end">
+                                <span>💡 تلميح الأمان والتعديل:</span>
+                                <Info className="w-3.5 h-3.5" />
+                              </div>
+                              <p className="leading-relaxed text-[10px] font-sans">
+                                إذا لم يظهر محرر جوجل بداخل الإطار بسبب قيود حماية المتصفح، يمكنك استخدام زر <strong>"تعديل بملء الشاشة في جوجل"</strong> أعلاه، أو إضافة نصوص مباشرة أدناه.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="bg-emerald-50 border border-emerald-150/70 p-3.5 rounded-xl text-right text-xs text-emerald-800 space-y-1 shrink-0">
+                              <div className="font-black flex items-center gap-1 justify-end">
+                                <span>💡 تلميح إدارة الجداول:</span>
+                                <Info className="w-3.5 h-3.5 text-emerald-600" />
+                              </div>
+                              <p className="leading-relaxed text-[10px] font-sans">
+                                جداول البيانات تدعم الصيغ الرياضية المعقدة والرسوم البيانية. يمكنك مشاركة الملف مع مراجعي الحسابات أو تحميله كملف Excel مباشرة من جوجل.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Notes & Comments Sidebar Panel */}
+                        <div className="xl:col-span-4 bg-slate-50 border border-slate-200/80 p-4 rounded-2xl text-right flex flex-col justify-between" dir="rtl">
+                          <div className="space-y-3 flex-grow flex flex-col">
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-2 shrink-0">
+                              <div className="flex items-center gap-1.5 text-slate-800">
+                                <MessageSquare className="w-4 h-4 text-indigo-600" />
+                                <span className="text-xs font-black">تعليقات وملاحظات المستند</span>
+                              </div>
+                              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full">
+                                {docComments.length} تعليق
+                              </span>
+                            </div>
+                            
+                            <p className="text-[10px] text-slate-500 leading-relaxed shrink-0">
+                              تواصل مع مدير المشروع ومستشارينا حول تفاصيل هذه الوثيقة مباشرة هنا لمزامنة الملاحظات.
+                            </p>
+
+                            {/* Comments List */}
+                            <div className="flex-grow overflow-y-auto space-y-2.5 max-h-[360px] my-2 pr-1 scrollbar-thin">
+                              {docComments.length === 0 ? (
+                                <div className="py-12 text-center text-[11px] text-slate-400">
+                                  لا توجد تعليقات بعد. اكتب أول سؤال أو تعليق بالأسفل!
+                                </div>
+                              ) : (
+                                docComments.map((comment) => {
+                                  const isClient = comment.author === "client";
+                                  return (
+                                    <div 
+                                      key={comment.id}
+                                      className={`p-2.5 rounded-xl text-xs space-y-1 ${
+                                        isClient 
+                                          ? "bg-indigo-50/70 border border-indigo-100 text-slate-800" 
+                                          : "bg-amber-50/70 border border-amber-100 text-slate-800"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-[10px] font-black text-slate-700 flex items-center gap-1 truncate">
+                                          <span className={`w-1.5 h-1.5 rounded-full ${isClient ? "bg-indigo-500" : "bg-amber-500"}`} />
+                                          {comment.authorName}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400 font-sans shrink-0">{comment.timestamp}</span>
+                                      </div>
+                                      <p className="leading-relaxed text-slate-600 text-[11px] break-words">{comment.text}</p>
+                                      {isClient && (
+                                        <div className="flex justify-start pt-0.5">
+                                          <button 
+                                            type="button"
+                                            onClick={() => handleDeleteComment(comment.id)}
+                                            className="text-[9px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
+                                          >
+                                            حذف
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          {/* New Comment Input Form */}
+                          <div className="border-t border-slate-200 pt-3 space-y-2 shrink-0">
+                            <textarea
+                              rows={2}
+                              value={newCommentText}
+                              onChange={(e) => setNewCommentText(e.target.value)}
+                              placeholder="اكتب ملاحظة، استفسار أو اقتراح تعديل..."
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none text-right"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddComment}
+                              disabled={!newCommentText.trim()}
+                              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 text-white font-bold text-[11px] py-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <span>إرسال التعليق لمدير المشروع 🚀</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Fast Append Input Form */}
+                      {editorMode === "docs" && activeGoogleDoc && (
+                        <div className="border-t border-slate-100 pt-4 space-y-2.5 text-right">
+                          <label className="text-xs font-bold text-slate-700 block">إضافة بند فني، تعديل، أو مهمة جديدة فورياً للوثيقة:</label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={handleAppendText}
+                              disabled={isAppendingToDoc || !textToAppendToDoc.trim()}
+                              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 text-white font-bold text-xs px-5 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer"
+                            >
+                              {isAppendingToDoc ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <span>إضافة البند ومزامنة ✍️</span>
+                              )}
+                            </button>
+                            <textarea
+                              rows={1}
+                              placeholder="اكتب التحديث أو المواصفة هنا ليتم إدراجها فورياً بآخر مستند جوجل..."
+                              value={textToAppendToDoc}
+                              onChange={(e) => setTextToAppendToDoc(e.target.value)}
+                              className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-sans focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 text-right resize-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* AI Copilot Review Engine */}
+                      {editorMode === "docs" && activeGoogleDoc && (
+                        <div className="bg-gradient-to-l from-slate-900 to-indigo-950 p-5 rounded-2xl text-white relative overflow-hidden shadow-md border border-indigo-900 space-y-3 text-right">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+                          
+                          <div className="flex items-center justify-between flex-wrap gap-3">
+                            <button
+                              type="button"
+                              onClick={handleSummarizeDoc}
+                              disabled={isAnalyzingDoc}
+                              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-amber-900/30 flex items-center gap-1.5 transition-all cursor-pointer select-none"
+                            >
+                              {isAnalyzingDoc ? (
+                                <>
+                                  <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                                  <span>جاري التدقيق التقني...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-4 h-4 text-amber-600" />
+                                  <span>تدقيق ومراجعة بذكاء Gemini ✨</span>
+                                </>
+                              )}
+                            </button>
+                            <div>
+                              <span className="text-xs font-black text-amber-400 flex items-center gap-1 justify-end">
+                                <span>مساعد مراجعة الوثائق والمخططات الذكي</span>
+                                <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                              </span>
+                              <p className="text-[10px] text-slate-300 font-sans mt-0.5">
+                                سيقوم الذكاء الاصطناعي بتحليل الوصف الفني أو الجدول الزمني واستخراج الأخطاء والتوصيات.
+                              </p>
+                            </div>
+                          </div>
+
+                          {docAnalysisResult && (
+                            <div className="bg-slate-950/85 p-4 rounded-xl border border-indigo-950 text-right text-xs leading-relaxed space-y-3 text-slate-200 select-text">
+                              <div className="border-b border-indigo-900 pb-2 mb-2 flex items-center justify-between text-amber-400 font-bold">
+                                <span className="text-[10px] text-slate-500 font-mono">طراز الذكاء الاصطناعي: Gemini 3.5 Flash</span>
+                                <span>تقرير التحليل الفني والتقييم الاستراتيجي</span>
+                              </div>
+                              <div className="overflow-x-auto whitespace-pre-wrap font-sans text-xs">
+                                {docAnalysisResult}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 font-black flex items-center justify-center shrink-0">
-                    {googleUser.displayName?.charAt(0) || "G"}
+                  <div className="bg-white border border-slate-200 rounded-3xl p-16 shadow-md text-center space-y-4 flex flex-col items-center justify-center">
+                    <PenTool className="w-12 h-12 text-slate-300 animate-bounce" />
+                    <h5 className="text-sm font-bold text-slate-800">لم يتم فتح أي ملف للمحرر حالياً</h5>
+                    <p className="text-xs text-slate-400">
+                      {editorMode === "docs" 
+                        ? "يرجى اختيار أحد المستندات أو المواصفات الفنية من القائمة الجانبية لعرضها بداخل محرر الإطار ومزامنتها."
+                        : "يرجى اختيار أحد الجداول والخطط المالية من القائمة الجانبية لعرض ميزانيتك داخل جدول البيانات."}
+                    </p>
                   </div>
                 )}
-                <div>
-                  <span className="text-xs text-blue-600 block font-bold">بوابة محرر المشاريع السحابي مفعلة:</span>
-                  <span className="text-sm font-black text-slate-900 block">{googleUser.displayName}</span>
-                  <span className="text-[11px] text-slate-450 font-mono block">{googleUser.email}</span>
+              </div>percase tracking-wider">أو اختر قالباً سريعاً بنقرة واحدة:</span>
                 </div>
-              </div>
 
-              {/* Real-time Sync Status Indicator */}
-              <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0" dir="rtl">
-                {syncStatus === "synced" ? (
-                  <>
-                    <span className="relative flex h-2.5 w-2.5 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                    <Cloud className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <div className="text-right">
-                      <span className="text-[9px] text-slate-400 block font-medium leading-none">حالة التزامن السحابي</span>
-                      <span className="text-xs font-extrabold text-emerald-600 block mt-0.5">تمت المزامنة وحفظ التغييرات</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCreateTemplatedSheet("budget")}
+                    disabled={isCreatingGoogleSheet}
+                    className="p-4 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shadow-sm">
+                      <FileSpreadsheet className="w-4.5 h-4.5" />
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="relative flex h-2.5 w-2.5 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
-                    </span>
-                    <RotateCcw className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
-                    <div className="text-right">
-                      <span className="text-[9px] text-slate-400 block font-medium leading-none">مزامنة جارية</span>
-                      <span className="text-xs font-extrabold text-blue-600 block mt-0.5">جاري الحفظ والمزامنة لحظياً...</span>
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900 block">ميزانية البنود والمشاريع</h5>
+                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">جدولة التكاليف المخصصة لكل مرحلة وتجميعها تلقائياً بمصنف مالي.</span>
                     </div>
-                  </>
+                    <span className="text-[10px] text-emerald-600 font-extrabold mt-auto">إنشاء ميزانية المشروع 📊 ←</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCreateTemplatedSheet("timeline")}
+                    disabled={isCreatingGoogleSheet}
+                    className="p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 shadow-sm">
+                      <Table className="w-4.5 h-4.5" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900 block">خطة تسليم المراحل والمخرجات</h5>
+                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">جدول زمني مع تواريخ التسليم والمهام والتقدم بنسب مئوية دقيقة.</span>
+                    </div>
+                    <span className="text-[10px] text-blue-600 font-extrabold mt-auto">إنشاء جدول تسليم 📅 ←</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCreateTemplatedSheet("cashflow")}
+                    disabled={isCreatingGoogleSheet}
+                    className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 hover:border-amber-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center border border-amber-100 shadow-sm">
+                      <TrendingUp className="w-4.5 h-4.5" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900 block">التدفقات النقدية المتوقعة</h5>
+                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">تقدير السيولة الواردة والخارجة للمؤسسة على مدار الأشهر الستة.</span>
+                    </div>
+                    <span className="text-[10px] text-amber-700 font-extrabold mt-auto">إنشاء التدفق المالي 💸 ←</span>
+                  </button>
+                </div>
+
+                {isCreatingGoogleSheet && (
+                  <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-2xl text-emerald-800 text-xs text-center font-bold flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    <span>جاري إنشاء وتأمين الجدول المالي سحابياً في حسابك على Google Sheets...</span>
+                  </div>
                 )}
               </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => loadGDocs(googleToken)}
-                  className="bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>مزامنة المستندات</span>
-                </button>
-                <button
-                  onClick={handleGoogleLogout}
-                  className="bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 text-xs font-bold px-4 py-2.5 rounded-xl border border-rose-200 transition-all cursor-pointer"
-                >
-                  قطع الاتصال بالمنصة
-                </button>
-              </div>
-            </div>
-
-            {/* Template Generators Section */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md text-right space-y-4">
-              <div className="flex items-center gap-2 justify-end border-b border-slate-150 pb-3" dir="rtl">
-                <PlusCircle className="w-5 h-5 text-indigo-600" />
-                <h4 className="text-sm font-black text-slate-900">إنشاء قوالب ومواصفات المشروع بنقرة واحدة</h4>
-              </div>
-              <p className="text-xs text-slate-500 max-w-3xl leading-relaxed">
-                أنشئ فوراً وثيقة المواصفات الفنية، خطة العمل، أو الاتفاقيات الاستشارية لمشروعك من مكتبة القوالب المجهزة، ليتم رفعها ومزامنتها مباشرة في حسابك بـ Google Docs.
-              </p>
-              
-              {/* Interactive Dropdown Selector */}
-              <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-end gap-4 justify-between" dir="rtl">
-                <div className="flex-grow space-y-2 text-right">
-                  <label className="block text-xs font-bold text-slate-700">اختر قالب المستند الاستشاري الجاهز للبدء والتحرير المباشر:</label>
-                  <div className="relative">
-                    <select
-                      value={selectedTemplate}
-                      onChange={(e) => setSelectedTemplate(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm font-sans text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right appearance-none cursor-pointer"
-                    >
-                      <option value="nda">🛡️ اتفاقية سرية المعلومات والمحافظة على السرية المتبادلة (NDA)</option>
-                      <option value="bizplan">📈 نموذج خطة عمل متكاملة ودراسة الجدوى المبدئية للمشروع (Business Plan)</option>
-                      <option value="spec">📄 وثيقة مواصفات المشروع الفنية المعتمدة والمكدس البرمجي (Technical Specs)</option>
-                      <option value="timeline">📅 خطة الجدول الزمني التراكمي ومراحل التسليم الرئيسية</option>
-                      <option value="general">💼 اتفاقية نطاق عمل المشروع والتقرير الاستشاري العام (General SOW)</option>
-                      <option value="proposal">💰 قالب المقترح الفني والمالي المتكامل لتنفيذ وتدشين المشروع</option>
-                      <option value="sla">🎧 اتفاقية مستوى تقديم الخدمة الفنية والدعم المستمر (SLA)</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center px-2 text-slate-400">
-                      <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCreateTemplatedDoc(selectedTemplate)}
-                  disabled={isCreatingGoogleDoc}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 text-white font-bold text-xs px-6 py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-md shadow-indigo-600/10"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>توليد وفتح القالب المختار 🚀</span>
-                </button>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">أو اختر قالباً سريعاً بنقرة واحدة:</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleCreateTemplatedDoc("spec")}
-                  disabled={isCreatingGoogleDoc}
-                  className="p-4 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100 shadow-sm">
-                    <PenTool className="w-4.5 h-4.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-900 block">وثيقة المواصفات الفنية</h5>
-                    <span className="text-[10px] text-slate-400 font-sans block mt-0.5">تفصيل البنية الأساسية والمكدس والتقنيات البرمجية.</span>
-                  </div>
-                  <span className="text-[10px] text-indigo-600 font-extrabold mt-auto">إنشاء القالب الفني 📄 ←</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleCreateTemplatedDoc("timeline")}
-                  disabled={isCreatingGoogleDoc}
-                  className="p-4 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shadow-sm">
-                    <Calendar className="w-4.5 h-4.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-900 block">الجدول الزمني ومراحل التسليم</h5>
-                    <span className="text-[10px] text-slate-400 font-sans block mt-0.5">جدولة المراحل والمهام مع معايير القبول والتواريخ.</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-600 font-extrabold mt-auto">إنشاء قالب الجدول الزمني 📅 ←</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleCreateTemplatedDoc("general")}
-                  disabled={isCreatingGoogleDoc}
-                  className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 hover:border-amber-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center border border-amber-100 shadow-sm">
-                    <FileSignature className="w-4.5 h-4.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-900 block">اتفاقية المشروع العامة</h5>
-                    <span className="text-[10px] text-slate-400 font-sans block mt-0.5">الأهداف الاستراتيجية، المخرجات الاستشارية وملاحق العمل.</span>
-                  </div>
-                  <span className="text-[10px] text-amber-700 font-extrabold mt-auto">إنشاء مستند عام ✍️ ←</span>
-                </button>
-              </div>
-
-              {isCreatingGoogleDoc && (
-                <div className="bg-indigo-50 border border-indigo-150 p-3 rounded-2xl text-indigo-800 text-xs text-center font-bold flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                  <span>جاري إنشاء وتأمين القالب سحابياً في حسابك على Google Docs...</span>
-                </div>
-              )}
-            </div>
+            )}
 
             {/* Main Interactive Editor Workspace */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
