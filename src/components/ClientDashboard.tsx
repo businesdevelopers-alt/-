@@ -73,8 +73,14 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Legend
-} from "recharts";
+  Legend,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell
+ } from "recharts";
+import * as d3 from "d3";
 import { Inquiry } from "../types";
 
 interface Milestone {
@@ -203,6 +209,34 @@ const DEMO_PROJECTS: ClientProject[] = [
       { date: "18 يونيو 2026", title: "الموافقة المبدئية على التسوية المالية", details: "تم إبرام اتفاقية تسوية مالية مبدئية يرجع بموجبها المقاول المطور 65% من الدفعة المالية للعميل." },
       { date: "12 يونيو 2026", title: "تسليم التقرير الهندسي التقني المعتمد", details: "تم إصدار وتسليم التقرير النهائي المكون من 64 صفحة يوضح الثغرات الأمنية والخلل التشغيلي في كود التطبيق." },
       { date: "28 مايو 2026", title: "العثور على ثغرات برمجية حرجة في قاعدة البيانات", details: "تم فحص الكود البرمجي ورصد 4 أخطاء معمارية عميقة تهدد حماية البيانات ولا تتطابق مع اشتراطات العقد." }
+    ]
+  },
+  {
+    id: "proj-demo-4",
+    projectName: "مشروع ريادة الأعمال والتمكين التجاري التجريبي",
+    clientName: "مستكشف النظام التجريبي",
+    email: "test@test.com",
+    progress: 75,
+    category: "استشارات تجارية وتمكين تقني متكامل",
+    advisorName: "مستشار التطوير: م. رائد العتيبي",
+    startDate: "20 يونيو 2026",
+    budgetedHours: 150,
+    actualHours: 112,
+    milestones: [
+      { name: "تأسيس الحساب التجريبي وربط السحابة", status: "completed", date: "20 يونيو 2026" },
+      { name: "صياغة الهوية التجارية والمستندات الهيكلية", status: "completed", date: "25 يونيو 2026" },
+      { name: "بناء النماذج المالية وجداول التدفقات النقدية", status: "active", date: "نشط حالياً بـ Google Sheets" },
+      { name: "عقد الجلسة الاستشارية ومراجعة المخرجات", status: "pending", date: "متوقع 5 يوليو" }
+    ],
+    chartData: [
+      { week: "الأسبوع 1", percentage: 15 },
+      { week: "الأسبوع 2", percentage: 35 },
+      { week: "الأسبوع 3", percentage: 55 },
+      { week: "الأسبوع 4", percentage: 75 }
+    ],
+    logs: [
+      { date: "28 يونيو 2026", title: "إدماج قوالب الجداول والبيانات المالية بنجاح", details: "تم تمكين قوالب Google Sheets الذكية لتقييم الجدوى الاقتصادية وحساب التدفقات المالية للمشروع التجريبي." },
+      { date: "24 يونيو 2026", title: "اعتماد مخرجات الورشة الأولى للهيكلة", details: "تم توثيق متطلبات الهوية وصياغة الأهداف الاستراتيجية الخمسة للمشروع التجاري التجريبي." }
     ]
   }
 ];
@@ -554,7 +588,7 @@ export default function ClientDashboard() {
     invoiceId: string;
   }
 
-  const [dashboardView, setDashboardView] = useState<"overview" | "wallet" | "library" | "editor">("overview");
+  const [dashboardView, setDashboardView] = useState<"overview" | "wallet" | "library" | "editor" | "analyzer" | "timeline">("overview");
   const [libraryDocs, setLibraryDocs] = useState<Record<string, LibraryDocument[]>>(INITIAL_LIBRARY_DOCS);
   const [librarySearch, setLibrarySearch] = useState<string>("");
   const [libraryFilter, setLibraryFilter] = useState<"all" | "contract" | "report" | "blueprint">("all");
@@ -585,6 +619,55 @@ export default function ClientDashboard() {
   const [selectedSheetTemplate, setSelectedSheetTemplate] = useState<string>("budget");
   const [editorMode, setEditorMode] = useState<"docs" | "sheets">("docs");
   const [sheetConfirmDeleteId, setSheetConfirmDeleteId] = useState<string | null>(null);
+
+  // Smart Data Analyzer State
+  const [analyzerTargetRevenue, setAnalyzerTargetRevenue] = useState<number>(250000);
+  const [analyzerActualRevenue, setAnalyzerActualRevenue] = useState<number>(185000);
+  const [analyzerMarketingSpend, setAnalyzerMarketingSpend] = useState<number>(45000);
+  const [analyzerOperationalCost, setAnalyzerOperationalCost] = useState<number>(65000);
+  const [analyzerConversionRate, setAnalyzerConversionRate] = useState<number>(3.8);
+  const [analyzerAcquisitionCost, setAnalyzerAcquisitionCost] = useState<number>(150);
+
+  // Loaded or local spreadsheet table data for charts
+  interface AnalyzerDataPoint {
+    label: string;
+    value1: number; // e.g. Inflow / Target
+    value2?: number; // e.g. Outflow / Actual
+    net?: number;
+  }
+  const [analyzerChartData, setAnalyzerChartData] = useState<AnalyzerDataPoint[]>([
+    { label: "الشهر الأول", value1: 50000, value2: 25000, net: 25000 },
+    { label: "الشهر الثاني", value1: 65000, value2: 30000, net: 35000 },
+    { label: "الشهر الثالث", value1: 80000, value2: 35000, net: 45000 },
+    { label: "الشهر الرابع", value1: 95000, value2: 40000, net: 55000 },
+    { label: "الشهر الخامس", value1: 110000, value2: 45000, net: 65000 },
+    { label: "الشهر السادس", value1: 125000, value2: 50000, net: 75000 },
+  ]);
+  const [analyzerChartTitle, setAnalyzerChartTitle] = useState<string>("التدفقات النقدية المتوقعة (ر.س)");
+  const [analyzerChartType, setAnalyzerChartType] = useState<"area" | "bar" | "line">("area");
+  const [isSyncingSheetWithChart, setIsSyncingSheetWithChart] = useState<boolean>(false);
+  const [analyzerSubTab, setAnalyzerSubTab] = useState<"sheet" | "charts">("sheet");
+
+  // Interactive D3 Gantt Chart states
+  interface GanttTask {
+    id: string;
+    name: string;
+    status: "completed" | "active" | "pending";
+    startDate: string; // YYYY-MM-DD
+    endDate: string; // YYYY-MM-DD
+    progress: number; // 0 to 100
+    notes?: string;
+  }
+  const [projectGanttTasks, setProjectGanttTasks] = useState<Record<string, GanttTask[]>>({});
+  const [ganttFilter, setGanttFilter] = useState<"all" | "completed" | "active" | "pending">("all");
+  const [editingGanttTask, setEditingGanttTask] = useState<GanttTask | null>(null);
+  const [isAddingGanttTask, setIsAddingGanttTask] = useState<boolean>(false);
+  const [newGanttName, setNewGanttName] = useState<string>("");
+  const [newGanttStart, setNewGanttStart] = useState<string>("");
+  const [newGanttEnd, setNewGanttEnd] = useState<string>("");
+  const [newGanttStatus, setNewGanttStatus] = useState<"completed" | "active" | "pending">("pending");
+  const [newGanttProgress, setNewGanttProgress] = useState<number>(0);
+  const [newGanttNotes, setNewGanttNotes] = useState<string>("");
 
   // Cloud Project Editor specific states
   const [editorActiveDoc, setEditorActiveDoc] = useState<GoogleDocDetails | null>(null);
@@ -924,6 +1007,11 @@ export default function ClientDashboard() {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
+
+  // Interactive Gantt Chart Refs & width state
+  const ganttSvgRef = React.useRef<SVGSVGElement | null>(null);
+  const ganttContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [ganttWidth, setGanttWidth] = useState<number>(800);
 
   // --- OTP Identity Verification States ---
   const [showOtpModal, setShowOtpModal] = useState<boolean>(false);
@@ -1404,6 +1492,352 @@ export default function ClientDashboard() {
       }
     }
   }, [selectedProject]);
+
+  // --- Gantt Chart Helper Functions and Effects ---
+  const getInitialGanttTasksForProject = (proj: ClientProject): GanttTask[] => {
+    let year = 2026;
+    let month = 2; // March is 2 (0-indexed)
+    let day = 1;
+    
+    if (proj.id === "proj-demo-2") {
+      month = 3; // April
+      day = 15;
+    } else if (proj.id === "proj-demo-3") {
+      month = 4; // May
+      day = 10;
+    }
+    
+    const tasks: GanttTask[] = [];
+    
+    proj.milestones.forEach((ms, idx) => {
+      const taskStart = new Date(year, month, day + idx * 15);
+      const taskEnd = new Date(year, month, day + idx * 15 + 12);
+      
+      const formatYMD = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${dd}`;
+      };
+      
+      let progress = 0;
+      if (ms.status === "completed") {
+        progress = 100;
+      } else if (ms.status === "active") {
+        progress = 60;
+      }
+      
+      tasks.push({
+        id: `gantt-task-${proj.id}-${idx}-${Date.now()}`,
+        name: ms.name,
+        status: ms.status,
+        startDate: formatYMD(taskStart),
+        endDate: formatYMD(taskEnd),
+        progress: progress,
+        notes: `معلم رئيسي مدمج للمشروع من خريطة الطريق الرسمية. الحالة الحالية: ${
+          ms.status === "completed" ? "مكتمل ومصادق عليه" : ms.status === "active" ? "قيد التنفيذ والمتابعة" : "مجدول للمستقبل"
+        }`
+      });
+    });
+    
+    return tasks;
+  };
+
+  // Populate Gantt Tasks on select
+  useEffect(() => {
+    if (selectedProject) {
+      const pid = selectedProject.id;
+      if (!projectGanttTasks[pid]) {
+        setProjectGanttTasks(prev => ({
+          ...prev,
+          [pid]: getInitialGanttTasksForProject(selectedProject)
+        }));
+      }
+    }
+  }, [selectedProject]);
+
+  // ResizeObserver for Gantt Container
+  useEffect(() => {
+    if (!ganttContainerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setGanttWidth(Math.max(500, entry.contentRect.width));
+      }
+    });
+    observer.observe(ganttContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // D3 Gantt Rendering Effect
+  useEffect(() => {
+    if (!selectedProject || !ganttSvgRef.current) return;
+    const pid = selectedProject.id;
+    const allTasks = projectGanttTasks[pid] || [];
+    
+    const filteredTasks = allTasks.filter(t => {
+      if (ganttFilter === "all") return true;
+      return t.status === ganttFilter;
+    });
+
+    const svgElement = d3.select(ganttSvgRef.current);
+    svgElement.selectAll("*").remove();
+
+    if (filteredTasks.length === 0) {
+      svgElement.append("text")
+        .attr("x", ganttWidth / 2)
+        .attr("y", 100)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#94a3b8")
+        .attr("font-family", "system-ui, sans-serif")
+        .attr("font-size", "14px")
+        .attr("font-weight", "500")
+        .text("لا توجد معالم زمنية مطابقة للمشروع في هذا التصنيف");
+      return;
+    }
+
+    const taskHeight = 52;
+    const margin = { top: 60, right: 30, bottom: 30, left: 240 };
+    const width = ganttWidth;
+    const height = filteredTasks.length * taskHeight + margin.top + margin.bottom;
+
+    svgElement.attr("width", width).attr("height", height);
+
+    interface ParsedGanttTask {
+      id: string;
+      name: string;
+      status: string;
+      startDate: string;
+      endDate: string;
+      progress: number;
+      notes?: string;
+      start: Date;
+      end: Date;
+    }
+
+    const parsedTasks: ParsedGanttTask[] = filteredTasks.map(t => ({
+      ...t,
+      start: new Date(t.startDate),
+      end: new Date(t.endDate)
+    }));
+
+    let minDate: Date = d3.min(parsedTasks, (t: ParsedGanttTask) => t.start) || new Date();
+    let maxDate: Date = d3.max(parsedTasks, (t: ParsedGanttTask) => t.end) || new Date();
+
+    minDate = new Date(minDate.getTime() - 4 * 24 * 60 * 60 * 1000);
+    maxDate = new Date(maxDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+
+    const xScale = d3.scaleTime()
+      .domain([minDate, maxDate])
+      .range([margin.left, width - margin.right]);
+
+    const yScale = d3.scaleBand()
+      .domain(parsedTasks.map((t: ParsedGanttTask) => t.id))
+      .range([margin.top, height - margin.bottom])
+      .padding(0.35);
+
+    // Draw horizontal grid lines
+    svgElement.append("g")
+      .attr("class", "grid")
+      .selectAll("line")
+      .data(parsedTasks)
+      .enter()
+      .append("line")
+      .attr("x1", margin.left)
+      .attr("y1", (d: any) => (yScale(d.id) || 0) + yScale.bandwidth() / 2)
+      .attr("x2", width - margin.right)
+      .attr("y2", (d: any) => (yScale(d.id) || 0) + yScale.bandwidth() / 2)
+      .attr("stroke", "#f1f5f9")
+      .attr("stroke-width", "1");
+
+    // X Axis
+    const xAxis = d3.axisTop(xScale)
+      .ticks(d3.timeWeek.every(1))
+      .tickFormat((d) => {
+        const date = d as Date;
+        return new Intl.DateTimeFormat("ar-EG", { month: "short", day: "numeric" }).format(date);
+      });
+
+    svgElement.append("g")
+      .attr("transform", `translate(0, ${margin.top})`)
+      .attr("class", "axis xAxis")
+      .call(xAxis)
+      .call(g => g.select(".domain").remove())
+      .call(g => g.selectAll(".tick text")
+        .attr("fill", "#64748b")
+        .attr("font-size", "10px")
+        .attr("font-weight", "600")
+        .attr("font-family", "system-ui, sans-serif")
+      )
+      .call(g => g.selectAll(".tick line")
+        .attr("stroke", "#e2e8f0")
+      );
+
+    // Draw "Today" line
+    const today = new Date("2026-06-28");
+    if (today >= minDate && today <= maxDate) {
+      const todayX = xScale(today);
+      
+      svgElement.append("line")
+        .attr("x1", todayX)
+        .attr("y1", margin.top - 15)
+        .attr("x2", todayX)
+        .attr("y2", height - margin.bottom)
+        .attr("stroke", "#ef4444")
+        .attr("stroke-width", "1.5")
+        .attr("stroke-dasharray", "4,4");
+
+      svgElement.append("rect")
+        .attr("x", todayX - 25)
+        .attr("y", margin.top - 32)
+        .attr("width", 50)
+        .attr("height", 16)
+        .attr("rx", 4)
+        .attr("fill", "#fee2e2");
+
+      svgElement.append("text")
+        .attr("x", todayX)
+        .attr("y", margin.top - 20)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#dc2626")
+        .attr("font-size", "9px")
+        .attr("font-weight", "bold")
+        .attr("font-family", "system-ui, sans-serif")
+        .text("اليوم 📍");
+    }
+
+    // Draw Connecting lines (Dependency paths)
+    for (let i = 0; i < parsedTasks.length - 1; i++) {
+      const current = parsedTasks[i];
+      const next = parsedTasks[i + 1];
+      
+      const startX = xScale(current.end);
+      const startY = (yScale(current.id) || 0) + yScale.bandwidth() / 2;
+      const endX = xScale(next.start);
+      const endY = (yScale(next.id) || 0) + yScale.bandwidth() / 2;
+
+      const pathData = `M ${startX} ${startY} L ${(startX + endX) / 2} ${startY} L ${(startX + endX) / 2} ${endY} L ${endX} ${endY}`;
+      
+      svgElement.append("path")
+        .attr("d", pathData)
+        .attr("fill", "none")
+        .attr("stroke", "#cbd5e1")
+        .attr("stroke-width", "1.2")
+        .attr("stroke-dasharray", "2,2")
+        .attr("marker-end", "url(#arrow)");
+    }
+
+    svgElement.append("defs").append("marker")
+      .attr("id", "arrow")
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", "6")
+      .attr("refY", "5")
+      .attr("markerWidth", "6")
+      .attr("markerHeight", "6")
+      .attr("orient", "auto-start-reverse")
+      .append("path")
+      .attr("d", "M 0 1 L 10 5 L 0 9 z")
+      .attr("fill", "#cbd5e1");
+
+    // Draw task bars
+    const taskGroups = svgElement.selectAll(".task-bar-group")
+      .data(parsedTasks)
+      .enter()
+      .append("g")
+      .attr("class", "task-bar-group")
+      .style("cursor", "pointer")
+      .on("click", (event, d: any) => {
+        setEditingGanttTask(d);
+      });
+
+    // Background total bar
+    taskGroups.append("rect")
+      .attr("x", (d: any) => xScale(d.start))
+      .attr("y", (d: any) => yScale(d.id) || 0)
+      .attr("width", (d: any) => Math.max(10, xScale(d.end) - xScale(d.start)))
+      .attr("height", yScale.bandwidth())
+      .attr("rx", 6)
+      .attr("ry", 6)
+      .attr("fill", (d: any) => {
+        if (d.status === "completed") return "#ecfdf5"; // soft emerald background
+        if (d.status === "active") return "#eff6ff"; // soft blue background
+        return "#f8fafc"; // slate-50
+      })
+      .attr("stroke", (d: any) => {
+        if (d.status === "completed") return "#10b981";
+        if (d.status === "active") return "#3b82f6";
+        return "#cbd5e1";
+      })
+      .attr("stroke-width", "1.2");
+
+    // Progress bar fill
+    taskGroups.append("rect")
+      .attr("x", (d: any) => xScale(d.start))
+      .attr("y", (d: any) => yScale(d.id) || 0)
+      .attr("width", (d: any) => {
+        const fullWidth = xScale(d.end) - xScale(d.start);
+        return Math.max(0, (fullWidth * d.progress) / 100);
+      })
+      .attr("height", yScale.bandwidth())
+      .attr("rx", 6)
+      .attr("ry", 6)
+      .attr("fill", (d: any) => {
+        if (d.status === "completed") return "#10b981"; // emerald
+        if (d.status === "active") return "#3b82f6"; // blue
+        return "#94a3b8"; // slate
+      })
+      .attr("opacity", 0.9);
+
+    // Progress text
+    taskGroups.append("text")
+      .attr("x", (d: any) => xScale(d.start) + 8)
+      .attr("y", (d: any) => (yScale(d.id) || 0) + yScale.bandwidth() / 2 + 3.5)
+      .attr("fill", "#ffffff")
+      .attr("font-size", "9px")
+      .attr("font-weight", "bold")
+      .attr("font-family", "system-ui, sans-serif")
+      .text((d: any) => `${d.progress}%`);
+
+    // Left names label
+    svgElement.append("g")
+      .attr("class", "task-labels")
+      .selectAll("text")
+      .data(parsedTasks)
+      .enter()
+      .append("text")
+      .attr("x", margin.left - 15)
+      .attr("y", (d: any) => (yScale(d.id) || 0) + yScale.bandwidth() / 2 + 4)
+      .attr("text-anchor", "end")
+      .attr("fill", (d: any) => d.status === "active" ? "#1e3a8a" : "#334155")
+      .attr("font-size", "11px")
+      .attr("font-weight", (d: any) => d.status === "active" ? "bold" : "600")
+      .attr("font-family", "system-ui, sans-serif")
+      .text((d: any) => {
+        const maxLen = 32;
+        if (d.name.length > maxLen) {
+          return d.name.substring(0, maxLen) + "...";
+        }
+        return d.name;
+      })
+      .append("title")
+      .text((d: any) => d.name);
+
+    // Status Bullets
+    svgElement.append("g")
+      .attr("class", "status-bullets")
+      .selectAll("circle")
+      .data(parsedTasks)
+      .enter()
+      .append("circle")
+      .attr("cx", margin.left - 8)
+      .attr("cy", (d: any) => (yScale(d.id) || 0) + yScale.bandwidth() / 2)
+      .attr("r", 4)
+      .attr("fill", (d: any) => {
+        if (d.status === "completed") return "#10b981";
+        if (d.status === "active") return "#3b82f6";
+        return "#cbd5e1";
+      });
+
+  }, [selectedProject, projectGanttTasks, ganttWidth, ganttFilter]);
 
   // Load signed documents from localStorage
   useEffect(() => {
@@ -2442,6 +2876,90 @@ export default function ClientDashboard() {
     }
   };
 
+  const handleSyncSheetWithChart = async () => {
+    if (!googleToken || !activeGoogleSheet) {
+      triggerLibraryToast("مزامنة البيانات", "الرجاء اختيار جدول مالي نشط لمزامنته.");
+      return;
+    }
+    setIsSyncingSheetWithChart(true);
+    try {
+      const rows = await getGoogleSheetValues(googleToken, activeGoogleSheet.id, "Sheet1!A1:D25");
+      if (!rows || rows.length < 3) {
+        throw new Error("لم يتم العثور على بيانات كافية في جدول البيانات (Sheet1).");
+      }
+
+      const sheetName = activeGoogleSheet.name || "";
+      let title = "بيانات جدول: " + sheetName;
+      let dataPoints: AnalyzerDataPoint[] = [];
+
+      if (sheetName.includes("التدفقات") || rows[1]?.[1]?.includes("التدفقات النقدية الواردة")) {
+        title = "تحليل التدفقات النقدية السنوية/الشهرية (ر.س)";
+        for (let i = 2; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0 || !row[0] || row[0].includes("إجمالي")) continue;
+          const label = row[0];
+          const val1 = parseFloat(String(row[1]).replace(/[^0-9.-]/g, "")) || 0;
+          const val2 = parseFloat(String(row[2]).replace(/[^0-9.-]/g, "")) || 0;
+          const net = val1 - val2;
+          dataPoints.push({ label, value1: val1, value2: val2, net });
+        }
+      } else if (sheetName.includes("الميزانية") || rows[1]?.[2]?.includes("التكلفة التقديرية")) {
+        title = "تحليل ميزانية بنود المشروع (ر.س)";
+        for (let i = 2; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0 || !row[0] || row[0].includes("إجمالي") || row[0] === "") continue;
+          const label = row[0];
+          const cost = parseFloat(String(row[2]).replace(/[^0-9.-]/g, "")) || 0;
+          dataPoints.push({ label, value1: cost });
+        }
+      } else if (sheetName.includes("جدول") || sheetName.includes("خطة") || rows[1]?.[4]?.includes("الإنجاز")) {
+        title = "مخطط نسب إنجاز مراحل تسليم المشروع (%)";
+        for (let i = 2; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0 || !row[0] || row[0] === "") continue;
+          const label = row[0];
+          const progressStr = String(row[4] || "0");
+          const progress = parseFloat(progressStr.replace(/[^0-9.-]/g, "")) || 0;
+          dataPoints.push({ label, value1: progress });
+        }
+      } else {
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length < 2 || !row[0]) continue;
+          const label = row[0];
+          const val1 = parseFloat(String(row[1]).replace(/[^0-9.-]/g, ""));
+          if (isNaN(val1)) continue;
+          const val2 = parseFloat(String(row[2] || "").replace(/[^0-9.-]/g, ""));
+          dataPoints.push({
+            label,
+            value1: val1,
+            value2: isNaN(val2) ? undefined : val2,
+            net: isNaN(val2) ? undefined : val1 - val2
+          });
+        }
+      }
+
+      if (dataPoints.length === 0) {
+        throw new Error("لم نتمكن من تحليل أرقام متوافقة تلقائياً من الصفوف المعروضة.");
+      }
+
+      setAnalyzerChartData(dataPoints);
+      setAnalyzerChartTitle(title);
+      triggerLibraryToast(
+        "تمت المزامنة بنجاح ⚡",
+        `تم سحب وتحليل ${dataPoints.length} صف من جدول البيانات السحابي ونمذجتها بيانيا بنجاح!`
+      );
+    } catch (err: any) {
+      console.error(err);
+      triggerLibraryToast(
+        "خطأ في المزامنة",
+        `تعذر قراءة الجداول: ${err.message}. يرجى مراجعة صياغة الخلايا.`
+      );
+    } finally {
+      setIsSyncingSheetWithChart(false);
+    }
+  };
+
   const handleAppendText = async () => {
     if (!googleToken || !activeGoogleDoc || !textToAppendToDoc.trim()) return;
     setIsAppendingToDoc(true);
@@ -2891,6 +3409,1199 @@ export default function ClientDashboard() {
     );
   };
 
+  const renderSmartDataAnalyzer = () => {
+    // Local calculation for KPIs
+    const netProfit = analyzerActualRevenue - (analyzerMarketingSpend + analyzerOperationalCost);
+    const profitMargin = analyzerActualRevenue > 0 ? ((netProfit / analyzerActualRevenue) * 100).toFixed(1) : "0.0";
+    const marketingROI = analyzerMarketingSpend > 0 ? ((analyzerActualRevenue / analyzerMarketingSpend) * 100).toFixed(0) : "0";
+    const opexRatio = analyzerActualRevenue > 0 ? (((analyzerOperationalCost) / analyzerActualRevenue) * 100).toFixed(1) : "0.0";
+
+    // Mapped local pie data
+    const pieData = [
+      { name: "المصروفات التشغيلية", value: analyzerOperationalCost, color: "#6366f1" },
+      { name: "المصروفات التسويقية", value: analyzerMarketingSpend, color: "#3b82f6" },
+      { name: "صافي الأرباح", value: Math.max(0, netProfit), color: "#10b981" }
+    ];
+
+    // Handle local cell updates in the fallback sheet grid
+    const handleLocalCellChange = (index: number, field: "value1" | "value2" | "label", value: string) => {
+      const updated = [...analyzerChartData];
+      if (field === "label") {
+        updated[index].label = value;
+      } else {
+        const numVal = parseFloat(value) || 0;
+        updated[index][field] = numVal;
+        if (updated[index].value1 !== undefined && updated[index].value2 !== undefined) {
+          updated[index].net = updated[index].value1 - updated[index].value2;
+        }
+      }
+      setAnalyzerChartData(updated);
+    };
+
+    return (
+      <div className="space-y-8 font-sans text-right" dir="rtl">
+        {/* Header Block */}
+        <div className="bg-gradient-to-r from-blue-900 to-indigo-950 p-6 sm:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative z-10 space-y-3">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 bg-emerald-500/20 text-emerald-300 rounded-xl">
+                <TrendingUp className="w-6 h-6 animate-pulse" />
+              </span>
+              <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                مطور بمؤشرات Recharts سحابياً
+              </span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black">محلل البيانات الذكي واستعراض مؤشرات الأداء (KPIs) 📊</h3>
+            <p className="text-xs sm:text-sm text-slate-350 leading-relaxed max-w-3xl">
+              تتيح لك هذه المنصة التفاعلية التحكم الكامل في قياس الجدوى وتتبع التدفقات المالية لمشروعك. قم بالربط المباشر بـ Google Sheets لإحضار بياناتك سحابياً، أو اختبر النموذج الفوري بيانيا عبر لوحة المراقبة التفاعلية.
+            </p>
+          </div>
+        </div>
+
+        {/* Dashboard Top KPIs Section */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-[11px] text-slate-400 font-bold block">إجمالي الإيرادات الفعلية</span>
+            <h5 className="text-lg font-black text-slate-900 mt-1">{analyzerActualRevenue.toLocaleString()} ر.س</h5>
+            <div className="mt-2 text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+              <span>نسبة من المستهدف: </span>
+              <span className="font-mono">{((analyzerActualRevenue / analyzerTargetRevenue) * 100).toFixed(0)}%</span>
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-[11px] text-slate-400 font-bold block">صافي الأرباح المحتسب</span>
+            <h5 className={`text-lg font-black mt-1 ${netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              {netProfit.toLocaleString()} ر.س
+            </h5>
+            <div className="mt-2 text-[10px] text-slate-500 font-bold flex items-center gap-1">
+              <span>هامش الربح: </span>
+              <span className="font-mono text-slate-700">{profitMargin}%</span>
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-[11px] text-slate-400 font-bold block">عائد الاستثمار التسويقي (ROMI)</span>
+            <h5 className="text-lg font-black text-blue-600 mt-1">{marketingROI}%</h5>
+            <div className="mt-2 text-[10px] text-slate-500 font-bold flex items-center gap-1">
+              <span>حجم الصرف: </span>
+              <span className="font-mono text-slate-700">{analyzerMarketingSpend.toLocaleString()} ر.س</span>
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-[11px] text-slate-400 font-bold block">معدل التحويل وقنوات النمو</span>
+            <h5 className="text-lg font-black text-indigo-600 mt-1">{analyzerConversionRate}%</h5>
+            <div className="mt-2 text-[10px] text-slate-500 font-bold flex items-center gap-1">
+              <span>تكلفة كسب العميل (CAC): </span>
+              <span className="font-mono text-slate-700">{analyzerAcquisitionCost} ر.س</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Interface Split Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* Right Sidebar: controls and GSheets connector (4 cols) */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Google Sheets Connection Panel */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-md space-y-4">
+              <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2.5">
+                <FileSpreadsheet className="w-4.5 h-4.5 text-emerald-600" />
+                <span>ربط جداول وموازنات Google Sheets</span>
+              </h4>
+
+              {!googleUser ? (
+                <div className="space-y-3.5 text-center py-2">
+                  <p className="text-[11px] text-slate-500 leading-relaxed text-right">
+                    يرجى تسجيل الدخول الآمن بحساب جوجل لعرض وتحديث جداول البيانات المالية لمشروعك عبر الإطار ومزامنتها تلقائياً مع الرسوم البيانية.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="w-full bg-slate-50 hover:bg-slate-100/80 text-slate-750 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.6c-.28 1.5-1.12 2.76-2.38 3.6v3h3.84c2.24-2.06 3.53-5.1 3.53-8.65z" />
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-3c-1.07.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.1A12 12 0 0012 24z" />
+                      <path fill="#FBBC05" d="M5.24 14.24A7.16 7.16 0 014.8 12c0-.79.13-1.57.38-2.31V6.59H1.32A11.94 11.94 0 000 12c0 2.22.6 4.3 1.32 6.13l3.92-3.1-3.1-.79z" />
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44A11.94 11.94 0 0012 0 12 12 0 001.32 6.59l3.92 3.1c.95-2.88 3.61-5.01 6.76-5.01z" />
+                    </svg>
+                    <span>ربط وتفعيل حساب Google</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => loadGSheets(googleToken)}
+                      className="text-xs font-extrabold text-blue-600 hover:text-blue-500 transition-all cursor-pointer"
+                    >
+                      تحديث القائمة 🔄
+                    </button>
+                    <span className="font-bold">جداول البيانات السحابية المتوفرة:</span>
+                  </div>
+
+                  {isFetchingGoogleSheets ? (
+                    <div className="py-6 text-center space-y-1.5 flex flex-col items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-[10px] text-slate-400">قراءة ملفات جداول البيانات...</span>
+                    </div>
+                  ) : googleSheets.length === 0 ? (
+                    <div className="p-3 text-center text-[11px] text-slate-450 border border-slate-100 rounded-xl bg-slate-50">
+                      لم يتم العثور على جداول بيانات سحابية. أنشئ ميزانية عبر قوالبنا أدناه للبدء فوراً!
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                      {googleSheets.map((sheet) => {
+                        const isSelected = activeGoogleSheet?.id === sheet.id;
+                        return (
+                          <button
+                            key={sheet.id}
+                            type="button"
+                            onClick={() => setActiveGoogleSheet(sheet)}
+                            className={`w-full p-2 rounded-xl border text-right transition-all flex items-center justify-between gap-1.5 text-xs ${
+                              isSelected
+                                ? "bg-emerald-50/50 border-emerald-400 font-bold"
+                                : "bg-slate-50 hover:bg-slate-100/60 border-slate-200/80"
+                            }`}
+                          >
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                              {isSelected ? "نشط ✓" : ""}
+                            </span>
+                            <span className="truncate text-slate-800 font-medium block flex-grow text-right text-right">
+                              📊 {sheet.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {activeGoogleSheet && (
+                    <button
+                      type="button"
+                      onClick={handleSyncSheetWithChart}
+                      disabled={isSyncingSheetWithChart}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 text-white font-extrabold text-xs py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/10"
+                    >
+                      {isSyncingSheetWithChart ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>جاري قراءة وتحليل البيانات...</span>
+                        </>
+                      ) : (
+                        <>
+                          <TrendingUp className="w-4 h-4" />
+                          <span>تحليل وتحديث المخطط من Google Sheets ⚡</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Template Generators */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-md space-y-3.5">
+              <h4 className="text-xs font-black text-slate-800 border-b border-slate-100 pb-2.5">
+                توليد وإنشاء ميزانية سريعة لربطها بـ Sheets
+              </h4>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                هل تريد توليد مصنف مالي مجهز بالمعادلات الحسابية تلقائياً؟ اختر قالباً لإنشائه في حسابك فوراً:
+              </p>
+              
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCreateTemplatedSheet("budget")}
+                  disabled={!googleToken || isCreatingGoogleSheet}
+                  className="w-full text-right p-3 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-200 rounded-xl transition-all flex items-center justify-between cursor-pointer disabled:opacity-50"
+                >
+                  <span className="text-[10px] text-emerald-600 font-bold">توليد سحابي ⚡</span>
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900">📊 ميزانية البنود والمشاريع</h5>
+                    <span className="text-[9px] text-slate-400 block font-light">جدولة تكاليف ومخرجات مراحل العمل.</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleCreateTemplatedSheet("cashflow")}
+                  disabled={!googleToken || isCreatingGoogleSheet}
+                  className="w-full text-right p-3 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-200 rounded-xl transition-all flex items-center justify-between cursor-pointer disabled:opacity-50"
+                >
+                  <span className="text-[10px] text-emerald-600 font-bold">توليد سحابي ⚡</span>
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900">💸 التدفقات النقدية والسيولة</h5>
+                    <span className="text-[9px] text-slate-400 block font-light">مقارنة الواردات والمنصرفات بالتفصيل.</span>
+                  </div>
+                </button>
+              </div>
+
+              {isCreatingGoogleSheet && (
+                <div className="p-2.5 bg-blue-50 border border-blue-150 rounded-xl text-blue-800 text-[10px] text-center font-bold animate-pulse flex items-center justify-center gap-1.5">
+                  <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>جاري تشكيل وحقن مصفوفة البيانات في Google Sheets...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Smart KPI Simulator Form Controls */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-md space-y-5">
+              <div className="border-b border-slate-100 pb-2.5">
+                <h4 className="text-xs font-black text-slate-850 flex items-center gap-1 justify-start">
+                  <Sparkles className="w-4 h-4 text-blue-500" />
+                  <span>لوحة تعديل ومحاكاة مؤشرات الأداء (KPIs)</span>
+                </h4>
+                <p className="text-[9px] text-slate-400 font-light mt-0.5 leading-relaxed">
+                  قم بتعديل هذه القيم لرؤية التغييرات المباشرة في التقييم والرسوم البيانية المتقدمة بالأسفل.
+                </p>
+              </div>
+
+              <div className="space-y-4 text-right">
+                {/* KPI Input 1 */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="font-mono text-slate-600">{analyzerActualRevenue.toLocaleString()} ر.س</span>
+                    <label className="text-slate-800">الإيرادات الفعلية:</label>
+                  </div>
+                  <input
+                    type="range"
+                    min="50000"
+                    max="500000"
+                    step="5000"
+                    value={analyzerActualRevenue}
+                    onChange={(e) => setAnalyzerActualRevenue(Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                </div>
+
+                {/* KPI Input 2 */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="font-mono text-slate-600">{analyzerTargetRevenue.toLocaleString()} ر.س</span>
+                    <label className="text-slate-800">الإيرادات المستهدفة:</label>
+                  </div>
+                  <input
+                    type="range"
+                    min="50000"
+                    max="500000"
+                    step="5000"
+                    value={analyzerTargetRevenue}
+                    onChange={(e) => setAnalyzerTargetRevenue(Number(e.target.value))}
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* KPI Input 3 */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="font-mono text-slate-600">{analyzerMarketingSpend.toLocaleString()} ر.س</span>
+                    <label className="text-slate-800">الميزانية التسويقية:</label>
+                  </div>
+                  <input
+                    type="range"
+                    min="5000"
+                    max="150000"
+                    step="2000"
+                    value={analyzerMarketingSpend}
+                    onChange={(e) => setAnalyzerMarketingSpend(Number(e.target.value))}
+                    className="w-full accent-indigo-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* KPI Input 4 */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="font-mono text-slate-600">{analyzerOperationalCost.toLocaleString()} ر.س</span>
+                    <label className="text-slate-800">التكاليف التشغيلية (OpEx):</label>
+                  </div>
+                  <input
+                    type="range"
+                    min="5000"
+                    max="150000"
+                    step="2000"
+                    value={analyzerOperationalCost}
+                    onChange={(e) => setAnalyzerOperationalCost(Number(e.target.value))}
+                    className="w-full accent-pink-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* Row Grid for Conversion Rate and CAC */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-500 font-bold block">معدل التحويل (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="30"
+                      value={analyzerConversionRate}
+                      onChange={(e) => setAnalyzerConversionRate(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-left font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-500 font-bold block">تكلفة الاستحواذ (CAC)</label>
+                    <input
+                      type="number"
+                      step="5"
+                      min="10"
+                      max="1000"
+                      value={analyzerAcquisitionCost}
+                      onChange={(e) => setAnalyzerAcquisitionCost(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-left font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Left Column: Sandbox and Charts View Panel (8 cols) */}
+          <div className="lg:col-span-8 space-y-6">
+            
+            {/* View Sub-Tabs Switcher */}
+            <div className="bg-white border border-slate-200/80 p-1.5 rounded-2xl shadow-sm flex items-center justify-between flex-wrap gap-2">
+              <div className="flex bg-slate-100 p-0.5 rounded-xl gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAnalyzerSubTab("sheet")}
+                  className={`py-2 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    analyzerSubTab === "sheet"
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/40"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>جدول موازنة البيانات التفاعلي 📝</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalyzerSubTab("charts")}
+                  className={`py-2 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    analyzerSubTab === "charts"
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/40"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>المخططات المتقدمة والتحليل (Recharts) 📈</span>
+                </button>
+              </div>
+
+              <div className="text-right pl-2">
+                <span className="text-[10px] text-slate-400 block font-light">الملف المفتوح للمطابقة:</span>
+                <span className="text-xs font-extrabold text-slate-800 truncate block max-w-[200px]">
+                  {activeGoogleSheet ? `📊 ${activeGoogleSheet.name}` : "✏️ مصنف محلي تفاعلي مستقل"}
+                </span>
+              </div>
+            </div>
+
+            {/* Sub-Tab content */}
+            {analyzerSubTab === "sheet" ? (
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-5">
+                {googleUser && activeGoogleSheet ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span className="font-mono text-[9px]">Google Sheets Sandbox IFrame</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span className="font-bold text-slate-700">محرر جداول بيانات جوجل السحابي التفاعلي المضمن:</span>
+                      </div>
+                    </div>
+
+                    <div className="relative border-2 border-slate-200 rounded-2xl overflow-hidden bg-slate-50 shadow-inner">
+                      <iframe
+                        src={`https://docs.google.com/spreadsheets/d/${activeGoogleSheet.id}/edit?embedded=true&chrome=false`}
+                        className="w-full h-[450px] border-none"
+                        title="Google Sheets Live IFrame Sandbox"
+                        allow="autoplay"
+                      />
+                      <div className="bg-slate-50 border-t border-slate-200 p-3 text-right text-[11px] text-slate-500 flex items-center justify-between">
+                        <span className="text-slate-400">أي تعديلات بالخلايا أعلاه تحفظ تلقائياً في خوادم جوجل السحابية الآمنة.</span>
+                        <span className="font-extrabold text-emerald-600 flex items-center gap-1 text-[10px]">
+                          <span>متصل وبحماية حسابك على Google ✓</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-blue-50 border border-blue-100 rounded-xl text-blue-900 text-xs leading-relaxed font-light">
+                      <strong>💡 تلميح استيراد البيانات:</strong> بعد الانتهاء من تحديث الجدول المالي سحابياً، اضغط على زر <strong>"تحليل وتحديث المخطط من Google Sheets ⚡"</strong> باللوحة الجانبية لقراءة مصفوفة الخلايا الجديدة وتحديث الرسومات البيانية فورياً بمؤشرات Recharts!
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6 text-right">
+                    <div className="bg-amber-50 border border-amber-150 p-4 rounded-2xl flex items-start gap-3">
+                      <span className="text-xl shrink-0">💡</span>
+                      <div className="text-xs text-amber-950 leading-relaxed font-light">
+                        <strong className="block font-bold text-amber-900 mb-1">تعديل البيانات تفاعلياً بصفحة مستقلة:</strong>
+                        أنت تستخدم المصنف التفاعلي المدمج المستقل. بإمكانك تعديل خلايا الجدول أدناه وتغيير التدفقات النقدية والبنود فورياً لتنعكس بشكل لحظي بالرسومات البيانية وعلامات مؤشرات الأداء المجاورة!
+                      </div>
+                    </div>
+
+                    {/* Local Editable Spreadsheet Mock */}
+                    <div className="overflow-hidden border border-slate-250/70 rounded-2xl shadow-inner bg-slate-50">
+                      <table className="w-full text-right border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 font-bold">
+                            <th className="p-3">صافي التدفقات (تلقائي)</th>
+                            <th className="p-3">التدفقات الخارجة (ر.س)</th>
+                            <th className="p-3">التدفقات الواردة (ر.س)</th>
+                            <th className="p-3 text-right">الفترة المالية / البند</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-150 bg-white">
+                          {analyzerChartData.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="p-2.5 font-mono font-bold text-slate-700 bg-slate-50/70">
+                                {((row.value1 || 0) - (row.value2 || 0)).toLocaleString()} ر.س
+                              </td>
+                              <td className="p-1 font-mono">
+                                <input
+                                  type="number"
+                                  value={row.value2 !== undefined ? row.value2 : ""}
+                                  onChange={(e) => handleLocalCellChange(idx, "value2", e.target.value)}
+                                  className="w-full p-2 bg-transparent border border-transparent hover:border-slate-200 focus:bg-white focus:border-blue-400 rounded-lg text-left font-mono text-xs focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-1 font-mono">
+                                <input
+                                  type="number"
+                                  value={row.value1}
+                                  onChange={(e) => handleLocalCellChange(idx, "value1", e.target.value)}
+                                  className="w-full p-2 bg-transparent border border-transparent hover:border-slate-200 focus:bg-white focus:border-blue-400 rounded-lg text-left font-mono text-xs focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-2 text-right font-bold text-slate-800">
+                                <input
+                                  type="text"
+                                  value={row.label}
+                                  onChange={(e) => handleLocalCellChange(idx, "label", e.target.value)}
+                                  className="w-full p-2 bg-transparent border border-transparent hover:border-slate-200 focus:bg-white focus:border-blue-400 rounded-lg text-right font-sans text-xs font-bold text-slate-800 focus:outline-none"
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-slate-100">
+                      <span className="text-[10px] text-slate-400">التغييرات على هذه الجداول تنعكس فورياً في التلخيص البياني.</span>
+                      <button
+                        type="button"
+                        onClick={handleGoogleSignIn}
+                        className="text-xs font-extrabold text-blue-600 hover:text-blue-500 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>هل ترغب بربط حساب Google لتجربة سحابية أعمق؟ اضغط هنا 🔗</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-8">
+                
+                {/* Chart 1 Context and Selection */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-3">
+                    {/* Visual Preset Toggles */}
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setAnalyzerChartType("area")}
+                        className={`py-1 px-3 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                          analyzerChartType === "area" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                        }`}
+                      >
+                        مساحة ملونة
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAnalyzerChartType("bar")}
+                        className={`py-1 px-3 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                          analyzerChartType === "bar" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                        }`}
+                      >
+                        أعمدة عمودية
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAnalyzerChartType("line")}
+                        className={`py-1 px-3 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                          analyzerChartType === "line" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                        }`}
+                      >
+                        خطوط بيانية
+                      </button>
+                    </div>
+
+                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                      <span>📈 {analyzerChartTitle}</span>
+                    </h4>
+                  </div>
+
+                  {/* Chart Render */}
+                  <div className="w-full h-72 font-sans text-xs">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {analyzerChartType === "area" ? (
+                        <AreaChart
+                          data={analyzerChartData}
+                          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                        >
+                          <defs>
+                            <linearGradient id="colorVal1" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01}/>
+                            </linearGradient>
+                            <linearGradient id="colorVal2" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#ef4444" stopOpacity={0.01}/>
+                            </linearGradient>
+                            <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0.01}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} stroke="#64748b" />
+                          <YAxis tickLine={false} axisLine={false} stroke="#64748b" />
+                          <Tooltip contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }} />
+                          <Legend verticalAlign="top" height={36} />
+                          <Area name="الواردات / القيمة الأساسية (ر.س)" type="monotone" dataKey="value1" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorVal1)" />
+                          {analyzerChartData[0]?.value2 !== undefined && (
+                            <Area name="المنصرفات / التكلفة (ر.س)" type="monotone" dataKey="value2" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorVal2)" />
+                          )}
+                          {analyzerChartData[0]?.net !== undefined && (
+                            <Area name="صافي السيولة النقدية (ر.س)" type="monotone" dataKey="net" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorNet)" />
+                          )}
+                        </AreaChart>
+                      ) : analyzerChartType === "bar" ? (
+                        <BarChart
+                          data={analyzerChartData}
+                          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} stroke="#64748b" />
+                          <YAxis tickLine={false} axisLine={false} stroke="#64748b" />
+                          <Tooltip contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }} />
+                          <Legend verticalAlign="top" height={36} />
+                          <Bar name="الواردات / القيمة الأساسية (ر.س)" dataKey="value1" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          {analyzerChartData[0]?.value2 !== undefined && (
+                            <Bar name="المنصرفات / التكلفة (ر.س)" dataKey="value2" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                          )}
+                          {analyzerChartData[0]?.net !== undefined && (
+                            <Bar name="صافي السيولة النقدية (ر.س)" dataKey="net" fill="#10b981" radius={[4, 4, 0, 0]} />
+                          )}
+                        </BarChart>
+                      ) : (
+                        <LineChart
+                          data={analyzerChartData}
+                          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} stroke="#64748b" />
+                          <YAxis tickLine={false} axisLine={false} stroke="#64748b" />
+                          <Tooltip contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }} />
+                          <Legend verticalAlign="top" height={36} />
+                          <Line name="الواردات / القيمة الأساسية (ر.س)" type="monotone" dataKey="value1" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4 }} />
+                          {analyzerChartData[0]?.value2 !== undefined && (
+                            <Line name="المنصرفات / التكلفة (ر.س)" type="monotone" dataKey="value2" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 4 }} />
+                          )}
+                          {analyzerChartData[0]?.net !== undefined && (
+                            <Line name="صافي السيولة النقدية (ر.س)" type="monotone" dataKey="net" stroke="#10b981" strokeWidth={3} dot={{ r: 5 }} />
+                          )}
+                        </LineChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Second Section: Pie Chart for OpEx Structure */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center pt-4 border-t border-slate-100">
+                  
+                  {/* Left Side: Pie Chart rendering */}
+                  <div className="w-full h-52 font-sans text-xs relative flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={80}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: any) => `${Number(value).toLocaleString()} ر.س`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+
+                    {/* Centered Net Margin Metric */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+                      <span className="text-[10px] text-slate-400 font-bold">هامش الربح صافي</span>
+                      <span className="text-sm font-black text-slate-800">{profitMargin}%</span>
+                    </div>
+                  </div>
+
+                  {/* Right Side: Expense Structure Legends */}
+                  <div className="space-y-3.5 text-right">
+                    <h5 className="text-xs font-black text-slate-800">توزيع هيكل الإيرادات ومحركات الأداء الأساسية:</h5>
+                    <div className="space-y-2">
+                      {pieData.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs p-2.5 rounded-xl border border-slate-100 bg-slate-50/50">
+                          <span className="font-mono font-bold text-slate-800">{item.value.toLocaleString()} ر.س</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-650">{item.name}</span>
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            )}
+
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
+  const renderSmartGanttChart = () => {
+    if (!selectedProject) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center shadow-xl">
+          <Calendar className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-slate-800">برجاء اختيار مشروع أولاً لعرض جدوله الزمني التفاعلي</h3>
+        </div>
+      );
+    }
+
+    const pid = selectedProject.id;
+    const allTasks = projectGanttTasks[pid] || [];
+    
+    // Stats
+    const totalCount = allTasks.length;
+    const completedCount = allTasks.filter(t => t.status === "completed").length;
+    const activeCount = allTasks.filter(t => t.status === "active").length;
+    const pendingCount = allTasks.filter(t => t.status === "pending").length;
+    
+    // Calculation of progress percentage
+    const avgProgress = totalCount > 0 
+      ? Math.round(allTasks.reduce((acc, t) => acc + t.progress, 0) / totalCount)
+      : 0;
+
+    // Filtered tasks for the list display
+    const filteredTasks = allTasks.filter(t => {
+      if (ganttFilter === "all") return true;
+      return t.status === ganttFilter;
+    });
+
+    const handleAddTaskSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newGanttName.trim()) return;
+
+      const newTask: GanttTask = {
+        id: `gantt-task-${pid}-${Date.now()}`,
+        name: newGanttName,
+        startDate: newGanttStart || "2026-06-28",
+        endDate: newGanttEnd || "2026-07-15",
+        status: newGanttStatus,
+        progress: newGanttStatus === "completed" ? 100 : newGanttStatus === "active" ? 50 : 0,
+        notes: newGanttNotes || "معلم مضاف يدوياً من قبل العميل"
+      };
+
+      setProjectGanttTasks(prev => ({
+        ...prev,
+        [pid]: [...(prev[pid] || []), newTask]
+      }));
+
+      // Reset
+      setNewGanttName("");
+      setNewGanttStart("");
+      setNewGanttEnd("");
+      setNewGanttStatus("pending");
+      setNewGanttNotes("");
+      setIsAddingGanttTask(false);
+    };
+
+    const handleSaveEdit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingGanttTask) return;
+
+      let updatedProgress = editingGanttTask.progress;
+      if (editingGanttTask.status === "completed") {
+        updatedProgress = 100;
+      } else if (editingGanttTask.status === "pending" && updatedProgress === 100) {
+        updatedProgress = 0;
+      }
+
+      const updatedTask = {
+        ...editingGanttTask,
+        progress: updatedProgress
+      };
+
+      setProjectGanttTasks(prev => ({
+        ...prev,
+        [pid]: (prev[pid] || []).map(t => t.id === editingGanttTask.id ? updatedTask : t)
+      }));
+
+      setEditingGanttTask(null);
+    };
+
+    const handleDeleteTask = (id: string) => {
+      setProjectGanttTasks(prev => ({
+        ...prev,
+        [pid]: (prev[pid] || []).filter(t => t.id !== id)
+      }));
+      setEditingGanttTask(null);
+    };
+
+    return (
+      <div className="space-y-8 font-sans text-right" dir="rtl">
+        {/* Top Header & Overview Cards */}
+        <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-850 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-64 h-64 bg-gradient-to-tr from-blue-500/10 to-teal-500/5 blur-3xl pointer-events-none rounded-full" />
+          
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
+            <div className="space-y-2">
+              <span className="bg-gradient-to-r from-blue-400 to-emerald-400 text-transparent bg-clip-text font-black text-xs sm:text-sm tracking-wide block uppercase">
+                التحكم بالمسار الزمني للمشروع 🚀
+              </span>
+              <h3 className="text-xl sm:text-3xl font-black tracking-tight leading-none text-white">
+                مخطط غانت التفاعلي الذكي (Gantt Chart)
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 font-light max-w-2xl leading-relaxed">
+                راقب وعالج خطتك الاستراتيجية للمشروع باستخدام قوة محرك الرسم D3 المتقدم. يمكنك تتبع المعالم الرئيسية المنجزة والقادمة، إضافة محطات جديدة، وتعديل الجدول في الوقت الفعلي.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => {
+                // Pre-fill default dates
+                setNewGanttStart("2026-06-28");
+                setNewGanttEnd("2026-07-15");
+                setIsAddingGanttTask(true);
+              }}
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs sm:text-sm py-3 px-5 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer whitespace-nowrap md:self-center"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة معلم زمني جديد</span>
+            </button>
+          </div>
+
+          {/* Stats Bento Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-8 pt-6 border-t border-slate-800">
+            <div className="bg-slate-850/55 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-xs text-slate-400 block mb-1">المعالم الزمنية الإجمالية</span>
+              <strong className="text-2xl font-black text-white">{totalCount}</strong>
+            </div>
+            <div className="bg-slate-850/55 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-xs text-emerald-400 block mb-1">المعالم المنجزة ✨</span>
+              <strong className="text-2xl font-black text-emerald-400">{completedCount}</strong>
+            </div>
+            <div className="bg-slate-850/55 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-xs text-blue-400 block mb-1">قيد التنفيذ والمتابعة</span>
+              <strong className="text-2xl font-black text-blue-400">{activeCount}</strong>
+            </div>
+            <div className="bg-slate-850/55 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-xs text-slate-400 block mb-1">المحطات المستقبلية</span>
+              <strong className="text-2xl font-black text-slate-300">{pendingCount}</strong>
+            </div>
+            <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-900/60 p-4 rounded-2xl col-span-2 lg:col-span-1">
+              <span className="text-xs text-indigo-300 block mb-1">متوسط إنجاز المشروع</span>
+              <div className="flex items-center gap-2">
+                <strong className="text-2xl font-black text-indigo-200">{avgProgress}%</strong>
+                <div className="flex-1 bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-blue-500 to-indigo-400 h-full" style={{ width: `${avgProgress}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Controls */}
+        <div className="flex flex-wrap gap-2 items-center justify-between bg-slate-50 border border-slate-200/80 p-3 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-slate-600 px-2">تصنيف العرض:</span>
+            <button
+              onClick={() => setGanttFilter("all")}
+              className={`py-1.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                ganttFilter === "all" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-550 hover:text-slate-800"
+              }`}
+            >
+              الكل ({totalCount})
+            </button>
+            <button
+              onClick={() => setGanttFilter("completed")}
+              className={`py-1.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                ganttFilter === "completed" ? "bg-white text-emerald-700 shadow-sm border border-slate-200" : "text-slate-550 hover:text-emerald-600"
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span>مكتمل ({completedCount})</span>
+            </button>
+            <button
+              onClick={() => setGanttFilter("active")}
+              className={`py-1.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                ganttFilter === "active" ? "bg-white text-blue-700 shadow-sm border border-slate-200" : "text-slate-550 hover:text-blue-600"
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+              <span>قيد التنفيذ ({activeCount})</span>
+            </button>
+            <button
+              onClick={() => setGanttFilter("pending")}
+              className={`py-1.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                ganttFilter === "pending" ? "bg-white text-slate-700 shadow-sm border border-slate-200" : "text-slate-550 hover:text-slate-700"
+              }`}
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
+              <span>المجدولة ({pendingCount})</span>
+            </button>
+          </div>
+          <div className="text-[11px] text-slate-500 font-medium px-2">
+            📍 ملاحظة: اضغط على أي شريط في مخطط غانت لتعديل تفاصيله أو حذفه فوراً.
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Gantt Interactive SVG Chart (8 Cols) */}
+          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5.5 h-5.5 text-indigo-600" />
+                <h4 className="text-base sm:text-lg font-extrabold text-slate-900">مخطط غانت الزمني التفاعلي</h4>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold bg-slate-50 border border-slate-150 px-2 py-1 rounded-md">
+                  <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block" />
+                  <span>مكتمل</span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold bg-slate-50 border border-slate-150 px-2 py-1 rounded-md">
+                  <span className="w-2.5 h-2.5 bg-blue-500 rounded-full inline-block" />
+                  <span>نشط حالياً</span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold bg-slate-50 border border-slate-150 px-2 py-1 rounded-md">
+                  <span className="w-2.5 h-2.5 bg-slate-400 rounded-full inline-block" />
+                  <span>مجدول</span>
+                </div>
+              </div>
+            </div>
+
+            {/* D3 Render Target Container */}
+            <div ref={ganttContainerRef} className="w-full overflow-x-auto select-none rounded-2xl bg-slate-50/50 p-2 border border-slate-100">
+              <svg ref={ganttSvgRef} className="w-full transition-all duration-300" />
+            </div>
+          </div>
+
+          {/* Interactive Sidebar: Milestones List with Quick Actions (4 Cols) */}
+          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+              <h4 className="text-sm sm:text-base font-black text-slate-900">سجل المعالم والمحطات</h4>
+              <span className="text-[10px] bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md text-indigo-700 font-bold font-mono">
+                {filteredTasks.length} محطة
+              </span>
+            </div>
+
+            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1 text-right">
+              {filteredTasks.map((task) => (
+                <div
+                  key={task.id}
+                  onClick={() => setEditingGanttTask(task)}
+                  className={`border rounded-2xl p-4 transition-all cursor-pointer hover:shadow-md hover:border-slate-300 text-right space-y-2 relative group ${
+                    task.status === "completed" 
+                      ? "border-emerald-100 bg-emerald-50/20 hover:bg-emerald-50/40" 
+                      : task.status === "active"
+                      ? "border-blue-100 bg-blue-50/20 hover:bg-blue-50/40"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                      task.status === "completed"
+                        ? "bg-emerald-100 border-emerald-200 text-emerald-800"
+                        : task.status === "active"
+                        ? "bg-blue-100 border-blue-200 text-blue-800 animate-pulse"
+                        : "bg-slate-100 border-slate-200 text-slate-600"
+                    }`}>
+                      {task.status === "completed" ? "مكتمل" : task.status === "active" ? "نشط" : "مجدول"}
+                    </span>
+                    <strong className="text-xs font-bold text-slate-900 line-clamp-2 leading-relaxed flex-1">
+                      {task.name}
+                    </strong>
+                  </div>
+
+                  <div className="text-[10px] text-slate-500 font-semibold flex items-center gap-1" dir="ltr">
+                    <span>{task.endDate}</span>
+                    <span className="text-slate-300 font-bold">←</span>
+                    <span>{task.startDate}</span>
+                  </div>
+
+                  {task.notes && (
+                    <p className="text-[10px] text-slate-600 font-light line-clamp-1 italic">
+                      {task.notes}
+                    </p>
+                  )}
+
+                  {/* Progress Line */}
+                  <div className="space-y-1 pt-1 border-t border-slate-100/50">
+                    <div className="flex justify-between text-[9px] font-bold text-slate-500">
+                      <span>{task.progress}%</span>
+                      <span>مستوى الإنجاز</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          task.status === "completed" ? "bg-emerald-500" : task.status === "active" ? "bg-blue-500" : "bg-slate-400"
+                        }`} 
+                        style={{ width: `${task.progress}%` }} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredTasks.length === 0 && (
+                <div className="text-center py-8 text-slate-400 text-xs">
+                  لا توجد مهام حالياً لتصنيف الفلتر النشط.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Modal: Add New Task/Milestone Form */}
+        {isAddingGanttTask && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <form onSubmit={handleAddTaskSubmit} className="bg-white rounded-3xl max-w-lg w-full p-6 text-right border border-slate-200 shadow-2xl space-y-4" dir="rtl">
+              <div className="flex items-center gap-2 text-indigo-650 border-b border-slate-100 pb-3">
+                <Calendar className="w-5.5 h-5.5 text-indigo-600 animate-pulse" />
+                <h4 className="text-base font-black">إضافة معلم أو مهمة جديدة للمخطط الزمني</h4>
+              </div>
+
+              <div className="space-y-3 text-right">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">اسم المعلم / المهمة الرئيسية *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newGanttName}
+                    onChange={(e) => setNewGanttName(e.target.value)}
+                    placeholder="مثال: تطوير لوحة التحكم والمدفوعات"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:bg-white transition-all font-semibold text-right"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">تاريخ البدء *</label>
+                    <input
+                      type="date"
+                      required
+                      value={newGanttStart}
+                      onChange={(e) => setNewGanttStart(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:bg-white transition-all font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">تاريخ الانتهاء المتوقع *</label>
+                    <input
+                      type="date"
+                      required
+                      value={newGanttEnd}
+                      onChange={(e) => setNewGanttEnd(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:bg-white transition-all font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">حالة المعلم الأوليّة</label>
+                  <select
+                    value={newGanttStatus}
+                    onChange={(e: any) => setNewGanttStatus(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:bg-white transition-all font-bold text-right"
+                  >
+                    <option value="pending">قيد الانتظار (جديد / معلق)</option>
+                    <option value="active">قيد التنفيذ والعمل الفوري</option>
+                    <option value="completed">مكتمل ومصادق عليه بنسبة 100%</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">ملاحظات أو تفاصيل المعلم</label>
+                  <textarea
+                    value={newGanttNotes}
+                    onChange={(e) => setNewGanttNotes(e.target.value)}
+                    placeholder="شرح موجز لمتطلبات أو مخرجات هذا المعلم..."
+                    rows={2}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:bg-white transition-all font-medium text-right"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-3 rounded-xl transition-all cursor-pointer"
+                >
+                  إضافة للمخطط 💾
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingGanttTask(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-750 font-bold text-xs py-3 rounded-xl transition-all cursor-pointer"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Modal: Edit existing Task/Milestone Form */}
+        {editingGanttTask && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <form onSubmit={handleSaveEdit} className="bg-white rounded-3xl max-w-lg w-full p-6 text-right border border-slate-200 shadow-2xl space-y-4" dir="rtl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-blue-600">
+                  <PlusCircle className="w-5.5 h-5.5 text-blue-600" />
+                  <h4 className="text-base font-black">تحرير أو تعديل المعلم الزمني</h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTask(editingGanttTask.id)}
+                  className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 border border-rose-100 px-3 py-1.5 rounded-xl cursor-pointer transition-all flex items-center gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف المعلم</span>
+                </button>
+              </div>
+
+              <div className="space-y-3 text-right">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">اسم المعلم / المهمة</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingGanttTask.name}
+                    onChange={(e) => setEditingGanttTask({ ...editingGanttTask, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-right"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">تاريخ البدء</label>
+                    <input
+                      type="date"
+                      required
+                      value={editingGanttTask.startDate}
+                      onChange={(e) => setEditingGanttTask({ ...editingGanttTask, startDate: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">تاريخ الانتهاء</label>
+                    <input
+                      type="date"
+                      required
+                      value={editingGanttTask.endDate}
+                      onChange={(e) => setEditingGanttTask({ ...editingGanttTask, endDate: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">حالة المعلم</label>
+                  <select
+                    value={editingGanttTask.status}
+                    onChange={(e: any) => {
+                      const newStatus = e.target.value;
+                      let newProg = editingGanttTask.progress;
+                      if (newStatus === "completed") newProg = 100;
+                      else if (newStatus === "pending") newProg = 0;
+                      setEditingGanttTask({ ...editingGanttTask, status: newStatus, progress: newProg });
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-right"
+                  >
+                    <option value="pending">قيد الانتظار (جديد / معلق)</option>
+                    <option value="active">قيد التنفيذ والمتابعة النشطة</option>
+                    <option value="completed">مكتمل ومصادق عليه بنسبة 100%</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                    <span>نسبة إنجاز المعلم الزمني</span>
+                    <span className="text-blue-600 font-mono">{editingGanttTask.progress}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={editingGanttTask.progress}
+                    onChange={(e) => {
+                      const newProg = parseInt(e.target.value);
+                      let newStatus = editingGanttTask.status;
+                      if (newProg === 100) newStatus = "completed";
+                      else if (newProg > 0 && newStatus === "pending") newStatus = "active";
+                      else if (newProg === 0 && newStatus === "completed") newStatus = "pending";
+                      setEditingGanttTask({ ...editingGanttTask, progress: newProg, status: newStatus });
+                    }}
+                    className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">ملاحظات وتفاصيل التعديل</label>
+                  <textarea
+                    value={editingGanttTask.notes || ""}
+                    onChange={(e) => setEditingGanttTask({ ...editingGanttTask, notes: e.target.value })}
+                    placeholder="أضف أي تفاصيل أو مخرجات إضافية لهذا المعلم..."
+                    rows={2}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all font-medium text-right"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-3 rounded-xl transition-all cursor-pointer"
+                >
+                  حفظ التغييرات 💾
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingGanttTask(null)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-750 font-bold text-xs py-3 rounded-xl transition-all cursor-pointer"
+                >
+                  تراجع
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderCloudProjectEditor = () => {
     return (
       <div className="space-y-8 font-sans">
@@ -2953,446 +4664,40 @@ export default function ClientDashboard() {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Interactive IFrame Editor Pane */}
-            <div className="lg:col-span-8 space-y-6">
-              {isFetchingActiveDoc || isCreatingGoogleSheet ? (
-                  <div className="bg-white border border-slate-200 rounded-3xl p-16 shadow-md text-center space-y-4 flex flex-col items-center justify-center">
-                    <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                    <h5 className="text-sm font-bold text-slate-800">جاري تجميع روابط محرر جوجل ومزامنة الملف...</h5>
-                    <p className="text-xs text-slate-400">نحن نقوم ببناء الربط السحابي الآمن مع Google Workspace وعرضه تفاعلياً.</p>
-                  </div>
-                ) : (editorMode === "docs" && activeGoogleDoc) || (editorMode === "sheets" && activeGoogleSheet) ? (
-                  <div className="space-y-6">
-                    {/* Active Editor Layout */}
-                    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md text-right space-y-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={editorMode === "docs" ? activeGoogleDoc?.webViewLink : activeGoogleSheet?.webViewLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`text-white text-xs font-black px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors shadow-md ${
-                              editorMode === "docs" 
-                                ? "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/10" 
-                                : "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/10"
-                            }`}
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>تعديل بملء الشاشة في جوجل 🔗</span>
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (editorMode === "docs" && activeGoogleDoc) {
-                                setDocConfirmDeleteId(activeGoogleDoc.id);
-                              } else if (editorMode === "sheets" && activeGoogleSheet) {
-                                setSheetConfirmDeleteId(activeGoogleSheet.id);
-                              }
-                            }}
-                            className="p-2.5 text-rose-600 hover:text-white hover:bg-rose-600 border border-slate-200 hover:border-rose-600 rounded-xl transition-all cursor-pointer"
-                            title="حذف الملف نهائياً"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center gap-1.5 justify-end">
-                            {syncStatus === "synced" ? (
-                              <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-150 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                                <Cloud className="w-3 h-3 text-emerald-600 shrink-0" />
-                                <span>تمت مزامنة التغييرات بنجاح</span>
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-150 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                                <RotateCcw className="w-3 h-3 text-blue-500 animate-spin shrink-0" />
-                                <span>جاري حفظ ومزامنة التعديلات...</span>
-                              </span>
-                            )}
-                            <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-semibold">بوابة المزامنة النشطة</span>
-                          </div>
-                          <h4 className="text-base font-black text-slate-900 mt-1">
-                            {editorMode === "docs" ? activeGoogleDoc?.title : activeGoogleSheet?.name}
-                          </h4>
-                        </div>
-                      </div>
+            {/* Account Info Header */}
 
-                      {/* Unified Template Switcher Dropdown inside Active Google Docs Header */}
-                      {editorMode === "docs" && (
-                        <div className="bg-amber-50/50 border border-amber-200/85 p-3.5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-3 text-right" dir="rtl">
-                          <div className="space-y-1">
-                            <span className="text-xs font-black text-slate-800 flex items-center gap-1">
-                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                              <span>تغيير أو إنشاء قالب جديد للمستند مباشرة:</span>
-                            </span>
-                            <p className="text-[10px] text-slate-500 leading-none">
-                              اختر قالب مستند من القائمة الجاهزة وسيتم توليده وحفظه بالكامل في حسابك وفتحه فورياً.
-                            </p>
-                          </div>
-                          <div className="flex gap-2 items-center w-full md:w-auto">
-                            <select
-                              value={selectedTemplate}
-                              onChange={(e) => setSelectedTemplate(e.target.value)}
-                              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-sans text-slate-800 focus:outline-none focus:border-indigo-500 text-right cursor-pointer min-w-[200px]"
-                            >
-                              <option value="nda">🛡️ اتفاقية سرية المعلومات (NDA)</option>
-                              <option value="bizplan">📈 نموذج خطة عمل متكاملة (Business Plan)</option>
-                              <option value="spec">📄 وثيقة مواصفات المشروع (Technical Specs)</option>
-                              <option value="timeline">📅 خطة الجدول الزمني ومراحل التسليم</option>
-                              <option value="general">💼 اتفاقية نطاق عمل المشروع (General SOW)</option>
-                              <option value="proposal">💰 قالب المقترح الفني والمالي المتكامل</option>
-                              <option value="sla">🎧 اتفاقية مستوى تقديم الخدمة الفنية (SLA)</option>
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => handleCreateTemplatedDoc(selectedTemplate)}
-                              disabled={isCreatingGoogleDoc}
-                              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                            >
-                              {isCreatingGoogleDoc ? (
-                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <span>فتح الآن 🚀</span>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
 
-                      {/* Unified Template Switcher Dropdown inside Active Google Sheets Header */}
-                      {editorMode === "sheets" && (
-                        <div className="bg-emerald-50/50 border border-emerald-200/80 p-3.5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-3 text-right" dir="rtl">
-                          <div className="space-y-1">
-                            <span className="text-xs font-black text-slate-800 flex items-center gap-1">
-                              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>إنشاء وتوليد قالب مالي جديد للجداول المعتمدة:</span>
-                            </span>
-                            <p className="text-[10px] text-slate-500 leading-none">
-                              اختر قالب مالي لحساب التكاليف وجدولة الموارد، وسيتم توليد وبناء الجدول المالي فوراً بـ Google Sheets.
-                            </p>
-                          </div>
-                          <div className="flex gap-2 items-center w-full md:w-auto">
-                            <select
-                              value={selectedSheetTemplate}
-                              onChange={(e) => setSelectedSheetTemplate(e.target.value)}
-                              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-sans text-slate-800 focus:outline-none focus:border-emerald-500 text-right cursor-pointer min-w-[200px]"
-                            >
-                              <option value="budget">📊 ميزانية المشروع والتحليل المالي (Cost Budgeting)</option>
-                              <option value="timeline">📅 جدول تقدم ومراحل تسليم المشروع (Gantt Tracker)</option>
-                              <option value="cashflow">💸 التدفقات النقدية والجدوى التوقعية (Cash Flow Forecast)</option>
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => handleCreateTemplatedSheet(selectedSheetTemplate)}
-                              disabled={isCreatingGoogleSheet}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                            >
-                              {isCreatingGoogleSheet ? (
-                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <span>فتح الآن 🚀</span>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
 
-                      {/* Interactive Google Workspace iframe Editor Frame */}
-                      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
-                        {/* Editor IFrame Column */}
-                        <div className="xl:col-span-8 space-y-3 flex flex-col justify-between">
-                          <div className="space-y-2 flex-grow">
-                            <div className="flex items-center justify-between text-xs text-slate-500">
-                              <span className="font-mono text-[10px]">iframe sandbox editor</span>
-                              <span className="font-bold text-slate-700">
-                                {editorMode === "docs" ? "محرر مستندات جوجل المضمن للمشروع:" : "محرر جداول بيانات جوجل المالي المضمن:"}
-                              </span>
-                            </div>
-
-                            <div className="relative border-2 border-slate-200 rounded-2xl overflow-hidden bg-slate-50 shadow-inner flex-grow">
-                              <iframe
-                                src={
-                                  editorMode === "docs"
-                                    ? `https://docs.google.com/document/d/${activeGoogleDoc?.id}/edit?embedded=true&chrome=false`
-                                    : `https://docs.google.com/spreadsheets/d/${activeGoogleSheet?.id}/edit?embedded=true&chrome=false`
-                                }
-                                className="w-full h-[500px] border-none"
-                                title="Google Editor Workspace"
-                                allow="autoplay"
-                              />
-                              <div className="bg-slate-100 border-t border-slate-200 p-3 text-right text-[11px] text-slate-600 flex items-center justify-between">
-                                <span className="text-slate-400">تحديثات الملف تحفظ تلقائياً على خوادم جوجل السحابية الآمنة.</span>
-                                {syncStatus === "synced" ? (
-                                  <span className="font-bold text-emerald-600 flex items-center gap-1">
-                                    <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>✓ متزامن ومحفوظ تلقائياً في السحابة</span>
-                                  </span>
-                                ) : (
-                                  <span className="font-bold text-blue-600 flex items-center gap-1">
-                                    <RotateCcw className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                                    <span>جاري الحفظ والتحقق من المزامنة...</span>
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {editorMode === "docs" ? (
-                            <div className="bg-blue-50 border border-blue-150/70 p-3.5 rounded-xl text-right text-xs text-blue-800 space-y-1 shrink-0">
-                              <div className="font-black flex items-center gap-1 justify-end">
-                                <span>💡 تلميح الأمان والتعديل:</span>
-                                <Info className="w-3.5 h-3.5" />
-                              </div>
-                              <p className="leading-relaxed text-[10px] font-sans">
-                                إذا لم يظهر محرر جوجل بداخل الإطار بسبب قيود حماية المتصفح، يمكنك استخدام زر <strong>"تعديل بملء الشاشة في جوجل"</strong> أعلاه، أو إضافة نصوص مباشرة أدناه.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="bg-emerald-50 border border-emerald-150/70 p-3.5 rounded-xl text-right text-xs text-emerald-800 space-y-1 shrink-0">
-                              <div className="font-black flex items-center gap-1 justify-end">
-                                <span>💡 تلميح إدارة الجداول:</span>
-                                <Info className="w-3.5 h-3.5 text-emerald-600" />
-                              </div>
-                              <p className="leading-relaxed text-[10px] font-sans">
-                                جداول البيانات تدعم الصيغ الرياضية المعقدة والرسوم البيانية. يمكنك مشاركة الملف مع مراجعي الحسابات أو تحميله كملف Excel مباشرة من جوجل.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Notes & Comments Sidebar Panel */}
-                        <div className="xl:col-span-4 bg-slate-50 border border-slate-200/80 p-4 rounded-2xl text-right flex flex-col justify-between" dir="rtl">
-                          <div className="space-y-3 flex-grow flex flex-col">
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-2 shrink-0">
-                              <div className="flex items-center gap-1.5 text-slate-800">
-                                <MessageSquare className="w-4 h-4 text-indigo-600" />
-                                <span className="text-xs font-black">تعليقات وملاحظات المستند</span>
-                              </div>
-                              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full">
-                                {docComments.length} تعليق
-                              </span>
-                            </div>
-                            
-                            <p className="text-[10px] text-slate-500 leading-relaxed shrink-0">
-                              تواصل مع مدير المشروع ومستشارينا حول تفاصيل هذه الوثيقة مباشرة هنا لمزامنة الملاحظات.
-                            </p>
-
-                            {/* Comments List */}
-                            <div className="flex-grow overflow-y-auto space-y-2.5 max-h-[360px] my-2 pr-1 scrollbar-thin">
-                              {docComments.length === 0 ? (
-                                <div className="py-12 text-center text-[11px] text-slate-400">
-                                  لا توجد تعليقات بعد. اكتب أول سؤال أو تعليق بالأسفل!
-                                </div>
-                              ) : (
-                                docComments.map((comment) => {
-                                  const isClient = comment.author === "client";
-                                  return (
-                                    <div 
-                                      key={comment.id}
-                                      className={`p-2.5 rounded-xl text-xs space-y-1 ${
-                                        isClient 
-                                          ? "bg-indigo-50/70 border border-indigo-100 text-slate-800" 
-                                          : "bg-amber-50/70 border border-amber-100 text-slate-800"
-                                      }`}
-                                    >
-                                      <div className="flex items-center justify-between gap-1">
-                                        <span className="text-[10px] font-black text-slate-700 flex items-center gap-1 truncate">
-                                          <span className={`w-1.5 h-1.5 rounded-full ${isClient ? "bg-indigo-500" : "bg-amber-500"}`} />
-                                          {comment.authorName}
-                                        </span>
-                                        <span className="text-[9px] text-slate-400 font-sans shrink-0">{comment.timestamp}</span>
-                                      </div>
-                                      <p className="leading-relaxed text-slate-600 text-[11px] break-words">{comment.text}</p>
-                                      {isClient && (
-                                        <div className="flex justify-start pt-0.5">
-                                          <button 
-                                            type="button"
-                                            onClick={() => handleDeleteComment(comment.id)}
-                                            className="text-[9px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
-                                          >
-                                            حذف
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
-
-                          {/* New Comment Input Form */}
-                          <div className="border-t border-slate-200 pt-3 space-y-2 shrink-0">
-                            <textarea
-                              rows={2}
-                              value={newCommentText}
-                              onChange={(e) => setNewCommentText(e.target.value)}
-                              placeholder="اكتب ملاحظة، استفسار أو اقتراح تعديل..."
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none text-right"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleAddComment}
-                              disabled={!newCommentText.trim()}
-                              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 text-white font-bold text-[11px] py-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              <span>إرسال التعليق لمدير المشروع 🚀</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Fast Append Input Form */}
-                      {editorMode === "docs" && activeGoogleDoc && (
-                        <div className="border-t border-slate-100 pt-4 space-y-2.5 text-right">
-                          <label className="text-xs font-bold text-slate-700 block">إضافة بند فني، تعديل، أو مهمة جديدة فورياً للوثيقة:</label>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={handleAppendText}
-                              disabled={isAppendingToDoc || !textToAppendToDoc.trim()}
-                              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 text-white font-bold text-xs px-5 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer"
-                            >
-                              {isAppendingToDoc ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <span>إضافة البند ومزامنة ✍️</span>
-                              )}
-                            </button>
-                            <textarea
-                              rows={1}
-                              placeholder="اكتب التحديث أو المواصفة هنا ليتم إدراجها فورياً بآخر مستند جوجل..."
-                              value={textToAppendToDoc}
-                              onChange={(e) => setTextToAppendToDoc(e.target.value)}
-                              className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-sans focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 text-right resize-none"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* AI Copilot Review Engine */}
-                      {editorMode === "docs" && activeGoogleDoc && (
-                        <div className="bg-gradient-to-l from-slate-900 to-indigo-950 p-5 rounded-2xl text-white relative overflow-hidden shadow-md border border-indigo-900 space-y-3 text-right">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-                          
-                          <div className="flex items-center justify-between flex-wrap gap-3">
-                            <button
-                              type="button"
-                              onClick={handleSummarizeDoc}
-                              disabled={isAnalyzingDoc}
-                              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-amber-900/30 flex items-center gap-1.5 transition-all cursor-pointer select-none"
-                            >
-                              {isAnalyzingDoc ? (
-                                <>
-                                  <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                                  <span>جاري التدقيق التقني...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="w-4 h-4 text-amber-600" />
-                                  <span>تدقيق ومراجعة بذكاء Gemini ✨</span>
-                                </>
-                              )}
-                            </button>
-                            <div>
-                              <span className="text-xs font-black text-amber-400 flex items-center gap-1 justify-end">
-                                <span>مساعد مراجعة الوثائق والمخططات الذكي</span>
-                                <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                              </span>
-                              <p className="text-[10px] text-slate-300 font-sans mt-0.5">
-                                سيقوم الذكاء الاصطناعي بتحليل الوصف الفني أو الجدول الزمني واستخراج الأخطاء والتوصيات.
-                              </p>
-                            </div>
-                          </div>
-
-                          {docAnalysisResult && (
-                            <div className="bg-slate-950/85 p-4 rounded-xl border border-indigo-950 text-right text-xs leading-relaxed space-y-3 text-slate-200 select-text">
-                              <div className="border-b border-indigo-900 pb-2 mb-2 flex items-center justify-between text-amber-400 font-bold">
-                                <span className="text-[10px] text-slate-500 font-mono">طراز الذكاء الاصطناعي: Gemini 3.5 Flash</span>
-                                <span>تقرير التحليل الفني والتقييم الاستراتيجي</span>
-                              </div>
-                              <div className="overflow-x-auto whitespace-pre-wrap font-sans text-xs">
-                                {docAnalysisResult}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+            {/* Account Info Header */}
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 text-right" dir="rtl">
+                {googleUser.photoURL ? (
+                  <img
+                    src={googleUser.photoURL}
+                    alt={googleUser.displayName}
+                    referrerPolicy="no-referrer"
+                    className="w-12 h-12 rounded-full border-2 border-blue-500 shadow-sm shrink-0"
+                  />
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-3xl p-16 shadow-md text-center space-y-4 flex flex-col items-center justify-center">
-                    <PenTool className="w-12 h-12 text-slate-300 animate-bounce" />
-                    <h5 className="text-sm font-bold text-slate-800">لم يتم فتح أي ملف للمحرر حالياً</h5>
-                    <p className="text-xs text-slate-400">
-                      {editorMode === "docs" 
-                        ? "يرجى اختيار أحد المستندات أو المواصفات الفنية من القائمة الجانبية لعرضها بداخل محرر الإطار ومزامنتها."
-                        : "يرجى اختيار أحد الجداول والخطط المالية من القائمة الجانبية لعرض ميزانيتك داخل جدول البيانات."}
-                    </p>
+                  <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 font-black flex items-center justify-center shrink-0">
+                    {googleUser.displayName?.charAt(0) || "G"}
                   </div>
                 )}
-              </div>percase tracking-wider">أو اختر قالباً سريعاً بنقرة واحدة:</span>
+                <div>
+                  <span className="text-xs text-slate-500 block font-bold">حساب جوجل المربوط بنجاح:</span>
+                  <span className="text-sm font-black text-slate-900 block">{googleUser.displayName}</span>
+                  <span className="text-[11px] text-slate-400 font-mono block">{googleUser.email}</span>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleCreateTemplatedSheet("budget")}
-                    disabled={isCreatingGoogleSheet}
-                    className="p-4 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shadow-sm">
-                      <FileSpreadsheet className="w-4.5 h-4.5" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-black text-slate-900 block">ميزانية البنود والمشاريع</h5>
-                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">جدولة التكاليف المخصصة لكل مرحلة وتجميعها تلقائياً بمصنف مالي.</span>
-                    </div>
-                    <span className="text-[10px] text-emerald-600 font-extrabold mt-auto">إنشاء ميزانية المشروع 📊 ←</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleCreateTemplatedSheet("timeline")}
-                    disabled={isCreatingGoogleSheet}
-                    className="p-4 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 shadow-sm">
-                      <Table className="w-4.5 h-4.5" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-black text-slate-900 block">خطة تسليم المراحل والمخرجات</h5>
-                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">جدول زمني مع تواريخ التسليم والمهام والتقدم بنسب مئوية دقيقة.</span>
-                    </div>
-                    <span className="text-[10px] text-blue-600 font-extrabold mt-auto">إنشاء جدول تسليم 📅 ←</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleCreateTemplatedSheet("cashflow")}
-                    disabled={isCreatingGoogleSheet}
-                    className="p-4 bg-slate-50 hover:bg-amber-50/50 border border-slate-200 hover:border-amber-200 rounded-2xl text-right transition-all flex flex-col gap-2.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center border border-amber-100 shadow-sm">
-                      <TrendingUp className="w-4.5 h-4.5" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-black text-slate-900 block">التدفقات النقدية المتوقعة</h5>
-                      <span className="text-[10px] text-slate-400 font-sans block mt-0.5">تقدير السيولة الواردة والخارجة للمؤسسة على مدار الأشهر الستة.</span>
-                    </div>
-                    <span className="text-[10px] text-amber-700 font-extrabold mt-auto">إنشاء التدفق المالي 💸 ←</span>
-                  </button>
-                </div>
-
-                {isCreatingGoogleSheet && (
-                  <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-2xl text-emerald-800 text-xs text-center font-bold flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-                    <span>جاري إنشاء وتأمين الجدول المالي سحابياً في حسابك على Google Sheets...</span>
-                  </div>
-                )}
               </div>
-            )}
+
+              <button
+                type="button"
+                onClick={handleGoogleLogout}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 text-xs font-bold px-4 py-2.5 rounded-xl border border-rose-200 transition-all cursor-pointer"
+              >
+                قطع الاتصال بالحساب
+              </button>
+            </div>
 
             {/* Main Interactive Editor Workspace */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -4228,7 +5533,7 @@ export default function ClientDashboard() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="max-w-2xl mx-auto"
+              className="max-w-4xl mx-auto"
             >
               <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8">
                 <div className="text-center space-y-2">
@@ -4277,7 +5582,7 @@ export default function ClientDashboard() {
                 {/* Interactive Demo login options */}
                 <div className="border-t border-slate-200 pt-6 space-y-4">
                   <span className="block text-xs font-bold text-slate-500 text-center">أو اختبر البوابة فوراً عبر مشاريع نموذجية حقيقية:</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {DEMO_PROJECTS.map((demo) => (
                       <button
                         id={`btn-demo-login-${demo.id}`}
@@ -4524,6 +5829,30 @@ export default function ClientDashboard() {
                 >
                   <PenTool className="w-4.5 h-4.5" />
                   <span>محرر المشاريع السحابي</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDashboardView("analyzer")}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 min-w-[140px] ${
+                    dashboardView === "analyzer"
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md"
+                      : "text-slate-650 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  <TrendingUp className="w-4.5 h-4.5" />
+                  <span>محلل البيانات الذكي 📊</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDashboardView("timeline")}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 min-w-[140px] ${
+                    dashboardView === "timeline"
+                      ? "bg-gradient-to-r from-indigo-700 to-purple-800 text-white shadow-md"
+                      : "text-slate-650 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  <Calendar className="w-4.5 h-4.5" />
+                  <span>الجدول الزمني (Gantt) ⏳</span>
                 </button>
               </div>
 
@@ -5253,6 +6582,26 @@ export default function ClientDashboard() {
                 exit={{ opacity: 0, y: -15 }}
               >
                 {renderCloudProjectEditor()}
+              </motion.div>
+            )}
+            {dashboardView === "analyzer" && (
+              <motion.div
+                key="analyzer-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+              >
+                {renderSmartDataAnalyzer()}
+              </motion.div>
+            )}
+            {dashboardView === "timeline" && (
+              <motion.div
+                key="timeline-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+              >
+                {renderSmartGanttChart()}
               </motion.div>
             )}
         </AnimatePresence>

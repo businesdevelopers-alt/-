@@ -2,9 +2,10 @@ import { Briefcase, Mail, Phone, MapPin, ExternalLink } from "lucide-react";
 
 interface FooterProps {
   onNavigate: (sectionId: string) => void;
+  onNavigateToService?: (serviceId: string) => void;
 }
 
-export default function Footer({ onNavigate }: FooterProps) {
+export default function Footer({ onNavigate, onNavigateToService }: FooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -66,12 +67,52 @@ export default function Footer({ onNavigate }: FooterProps) {
           {/* Core Services Column */}
           <div className="md:col-span-3 space-y-4">
             <h4 className="text-sm font-bold text-slate-900 tracking-wider">خدماتنا التخصصية</h4>
-            <ul className="space-y-2.5 text-xs sm:text-sm text-slate-600">
-              <li>إدارة وهيكلة الشركات</li>
-              <li>التخطيط الاستراتيجي</li>
-              <li>التحكيم التقني وفض النزاع</li>
-              <li>احتضان مشاريع رواد الأعمال</li>
-              <li>تصميم وبرمجة التطبيقات</li>
+            <ul className="space-y-2.5 text-xs sm:text-sm text-slate-650">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToService?.("mgmt")}
+                  className="hover:text-blue-600 transition-colors cursor-pointer text-slate-600 text-right w-full block"
+                >
+                  إدارة وهيكلة الشركات
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToService?.("plan")}
+                  className="hover:text-blue-600 transition-colors cursor-pointer text-slate-600 text-right w-full block"
+                >
+                  التخطيط الاستراتيجي
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToService?.("arbit")}
+                  className="hover:text-blue-600 transition-colors cursor-pointer text-slate-600 text-right w-full block"
+                >
+                  التحكيم التقني وفض النزاع
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToService?.("entre")}
+                  className="hover:text-blue-600 transition-colors cursor-pointer text-slate-600 text-right w-full block"
+                >
+                  احتضان مشاريع رواد الأعمال
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToService?.("apps")}
+                  className="hover:text-blue-600 transition-colors cursor-pointer text-slate-600 text-right w-full block"
+                >
+                  تصميم وبرمجة التطبيقات
+                </button>
+              </li>
             </ul>
           </div>
 

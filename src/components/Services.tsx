@@ -4,10 +4,15 @@ import { Service } from "../types";
 
 interface ServicesProps {
   onSelectService: (serviceId: string) => void;
+  selectedServiceId?: string;
+  onSelectServiceId?: (id: string) => void;
 }
 
-export default function Services({ onSelectService }: ServicesProps) {
-  const [selectedId, setSelectedId] = useState<string>("mgmt");
+export default function Services({ onSelectService, selectedServiceId, onSelectServiceId }: ServicesProps) {
+  const [localSelectedId, setLocalSelectedId] = useState<string>("mgmt");
+
+  const selectedId = selectedServiceId !== undefined ? selectedServiceId : localSelectedId;
+  const setSelectedId = onSelectServiceId !== undefined ? onSelectServiceId : setLocalSelectedId;
 
   // Rich metadata for benefits and needs met as requested by user
   const servicesExtendedData: Record<string, { benefits: string[]; needsMet: string; targetAudience: string }> = {

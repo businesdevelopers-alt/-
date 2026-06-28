@@ -23,6 +23,7 @@ export default function App() {
   const [preFilledService, setPreFilledService] = useState("");
   const [preFilledNotes, setPreFilledNotes] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("mgmt");
 
   // Monitor active section on scroll
   useEffect(() => {
@@ -62,6 +63,11 @@ export default function App() {
       });
       setActiveSection(sectionId);
     }
+  };
+
+  const handleNavigateToService = (serviceId: string) => {
+    setSelectedServiceId(serviceId);
+    handleNavigate("services");
   };
 
   // Pre-fill from Services details click
@@ -191,7 +197,11 @@ export default function App() {
         </section>
 
         {/* 4. Interactive Services Explorer */}
-        <Services onSelectService={handleSelectService} />
+        <Services
+          onSelectService={handleSelectService}
+          selectedServiceId={selectedServiceId}
+          onSelectServiceId={setSelectedServiceId}
+        />
 
         {/* 5. Solutions Section */}
         <Solutions onSelectSolution={handleSelectSolution} />
@@ -233,7 +243,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <Footer onNavigate={handleNavigate} />
+      <Footer onNavigate={handleNavigate} onNavigateToService={handleNavigateToService} />
 
       {/* Persistent Floating Quick-Contact Widgets */}
       <div className="fixed bottom-6 right-6 z-40 flex flex-col space-y-3">
